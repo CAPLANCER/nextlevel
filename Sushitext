@@ -1,0 +1,21 @@
+using ClosedXML.Excel;
+using System;
+
+public static string GetExcelRangeAsHtml(string filePath, string sheetName, string rangeAddress)
+{
+    try
+    {
+        using (var workbook = new XLWorkbook(filePath))
+        {
+            var worksheet = workbook.Worksheet(sheetName);
+            var range = worksheet.Range(rangeAddress);
+            
+            // Generate HTML with styles
+            return range.ToHtml(XLHtmlScope.Inline); 
+        }
+    }
+    catch (Exception ex)
+    {
+        throw new Exception($"Failed to convert Excel to HTML: {ex.Message}");
+    }
+}
