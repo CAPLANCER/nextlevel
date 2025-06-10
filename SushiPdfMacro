@@ -1,0 +1,44 @@
+Sub ExportScreenshotsAsPDFs(RankSummary As String, QuartSummary As String, Summary As String)
+    ' Define the variables
+    Dim wsArray As Variant
+    Dim rngArray As Variant
+    Dim tempSheet As Worksheet
+    Dim rng As Range
+    Dim ws As Worksheet
+    Dim i As Integer
+    Dim filePath As String
+    
+    ' Array of sheet names and their respective ranges
+    wsArray = Array(RankSummary, QuartSummary, Summary)
+    rngArray = Array("B1:Y23", "L226:MS47", "D3:I19")
+    
+    Application.DisplayAlerts = False
+    Application.ScreenUpdating = False
+    Application.Visible = True
+    Application.WindowState = xlMaximized
+    DoEvents
+
+    ' Loop through each sheet and export the range as PDF
+    For i = LBound(wsArray) To UBound(wsArray)
+        Set ws = ThisWorkbook.Sheets(wsArray(i))
+        Set rng = ws.Range(rngArray(i))
+        
+        ' Copy the required range to a temporary sheet
+        Set tempSheet = Sheets.Add(After:=Sheets(Sheets.Count))
+        rng.Copy
+        tempSheet.Range("A1").PasteSpecial Paste:=xlPasteAll
+        Application.CutCopyMode = False
+        
+        ' Export the temp sheet to PDF
+        filePath = "D:\BotFiles\Gold ETF FOF\Mail Screenshots\" & wsArray(i) & ".pdf"
+        tempSheet.ExportAsFixedFormat Type:=xlTypePDF, Filename:=filePath, Quality:=xlQualityStandard, IncludeDocProperties:=True, IgnorePrintAreas:=False, OpenAfterPublish:=False
+
+        ' Delete the temporary sheet
+        Application.DisplayAlerts = False
+        tempSheet.Delete
+    Next i
+
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+    Application.Visible = True
+End Sub
