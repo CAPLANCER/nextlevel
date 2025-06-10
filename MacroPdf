@@ -1,30 +1,33 @@
-Sub ExportDefinedRangeAsPDF()
+Sub ExportRangeAsPDF_Corrected()
     Dim sheetName As String
     Dim rangeAddress As String
-    Dim rng As Range
     Dim ws As Worksheet
     Dim pdfPath As String
 
     ' === CONFIGURATION ===
-    sheetName = "Sheet1"            ' Set your sheet name here
-    rangeAddress = "A1:G20"         ' Set your desired range here
+    sheetName = "Rank Summary"
+    rangeAddress = "B1:Y23"
     ' =====================
 
     ' Get worksheet
     On Error Resume Next
     Set ws = ThisWorkbook.Sheets(sheetName)
     On Error GoTo 0
-    
     If ws Is Nothing Then Exit Sub
 
-    ' Get range
-    On Error Resume Next
-    Set rng = ws.Range(rangeAddress)
-    On Error GoTo 0
-    
-    If rng Is Nothing Then Exit Sub
+    ' Set the print area to the desired range
+    ws.PageSetup.PrintArea = rangeAddress
 
-    ' Export as PDF
+    ' Optional: fit to 1 page
+    With ws.PageSetup
+        .Zoom = False
+        .FitToPagesWide = 1
+        .FitToPagesTall = False
+    End With
+
+    ' Define output PDF path
     pdfPath = ThisWorkbook.Path & "\" & sheetName & ".pdf"
-    rng.ExportAsFixedFormat Type:=xlTypePDF, Filename:=pdfPath
+
+    ' Export the worksheet using the print area
+    ws.ExportAsFixedFormat Type:=xlTypePDF, Filename:=pdfPath
 End Sub
