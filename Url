@@ -1,1 +1,26 @@
-https://github.com/aspose-cells/Aspose.Cells-for-Java/releases/tag/Aspose.Cells_Java_for_Python-v1.0
+' Import required namespace
+Imports System.Windows.Forms
+
+' Arguments for UiPath (optional, to pass resolution to workflow)
+' Define these in UiPath: screenWidth (Integer), screenHeight (Integer)
+' In Invoke Code activity, map these as arguments
+
+Try
+    ' Get primary screen
+    Dim screen As Screen = Screen.PrimaryScreen
+    If screen IsNot Nothing Then
+        ' Get resolution
+        Dim width As Integer = screen.Bounds.Width
+        Dim height As Integer = screen.Bounds.Height
+        ' Assign to UiPath variables (optional)
+        screenWidth = width
+        screenHeight = height
+        ' Log resolution
+        Console.WriteLine("Resolution: " & width & "x" & height)
+    Else
+        Console.WriteLine("Error: No primary screen detected.")
+    End If
+Catch ex As Exception
+    ' Log any errors
+    Console.WriteLine("Error retrieving resolution: " & ex.Message)
+End Try
