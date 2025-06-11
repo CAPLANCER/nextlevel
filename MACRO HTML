@@ -1,0 +1,24 @@
+Set xlApp = CreateObject("Excel.Application")
+xlApp.Visible = False
+Set xlBook = xlApp.Workbooks.Open("C:\Input\StyledData.xlsx")
+
+' Summer: D3:I29
+Set xlSheet = xlBook.Sheets("Summer")
+Set rng = xlSheet.Range("D3:I29")
+Set pubObj = xlBook.PublishObjects.Add(1, "C:\Output\Summer_D3_I29.html", xlSheet.Name, rng.Address, 0)
+pubObj.Publish True
+
+' Rank Summary: B1:Y33
+Set xlSheet = xlBook.Sheets("Rank Summary")
+Set rng = xlSheet.Range("B1:Y33")
+Set pubObj = xlBook.PublishObjects.Add(1, "C:\Output\RankSummary_B1_Y33.html", xlSheet.Name, rng.Address, 0)
+pubObj.Publish True
+
+' Quarterly Summary: L36:Z67
+Set xlSheet = xlBook.Sheets("Quarterly Summary")
+Set rng = xlSheet.Range("L36:Z67")
+Set pubObj = xlBook.PublishObjects.Add(1, "C:\Output\QuarterlySummary_L36_Z67.html", xlSheet.Name, rng.Address, 0)
+pubObj.Publish True
+
+xlBook.Close False
+xlApp.Quit
