@@ -5,6 +5,8 @@ Sub CombineRangesToHTML()
     Dim rngSummer As Range, rngRank As Range, rngQuarterly As Range
     Dim filePath As String
     Dim pasteRow As Long
+    Dim fs As Object, ts As Object
+    Dim i As Long, j As Long
     
     ' Set the workbook
     Set wb = ThisWorkbook
@@ -22,37 +24,69 @@ Sub CombineRangesToHTML()
     wsTemp.Name = "TempHTMLExport"
     pasteRow = 1
     
-    ' Copy Summer range (D3:I29) to temp sheet
+    ' Copy Summer range (D3:I29) - Values and Formatting
     rngSummer.Copy
-    wsTemp.Cells(pasteRow, 1).PasteSpecial Paste:=xlPasteAll
+    With wsTemp.Cells(pasteRow, 1)
+        .PasteSpecial Paste:=xlPasteValues
+        .PasteSpecial Paste:=xlPasteFormats
+    End With
     pasteRow = pasteRow + rngSummer.Rows.Count + 2 ' Add 2 rows as spacer
     
-    ' Copy Rank Summary range (B1:Y33) to temp sheet
+    ' Copy Rank Summary range (B1:Y33) - Values and Formatting
     rngRank.Copy
-    wsTemp.Cells(pasteRow, 1).PasteSpecial Paste:=xlPasteAll
+    With wsTemp.Cells(pasteRow, 1)
+        .PasteSpecial Paste:=xlPasteValues
+        .PasteSpecial Paste:=xlPasteFormats
+    End With
     pasteRow = pasteRow + rngRank.Rows.Count + 2 ' Add 2 rows as spacer
     
-    ' Copy Quarterly Summary range (L36:Z67) to temp sheet
+    ' Copy Quarterly Summary range (L36:Z67) - Values and Formatting
     rngQuarterly.Copy
-    wsTemp.Cells(pasteRow, 1).PasteSpecial Paste:=xlPasteAll
+    With wsTemp.Cells(pasteRow, 1)
+        .PasteSpecial Paste:=xlPasteValues
+        .PasteSpecial Paste:=xlPasteFormats
+    End With
     
-    ' Define the combined range in the temp sheet
+    ' Define the combined range
     Dim combinedRange As Range
     Set combinedRange = wsTemp.Range("A1:Z" & pasteRow + rngQuarterly.Rows.Count - 1)
     
-    ' Export the combined range to HTML
+    ' Create and write to HTML file
     filePath = "C:\Output\CombinedRanges.html"
-    With wb.PublishObjects.Add( _
-        SourceType:=xlSourceRange, _
-        Filename:=filePath, _
-        Sheet:=wsTemp.Name, _
-        Source:=combinedRange.Address, _
-        HtmlType:=xlHtmlStatic)
-        .Publish (True)
-    End With
+    Set fs = CreateObject("Scripting.FileSystemObject")
+    Set ts = fs.CreateTextFile(filePath, True)
+    
+    ' Write HTML header
+    ts.WriteLine "<html><head><style>"
+    ts.WriteLine "table { border-collapse: collapse; width: 100%; }"
+    ts.WriteLine "td { border: 1px solid black; padding: 5px; }"
+    ts.WriteLine "</style></head><body>"
+    ts.WriteLine "<table>"
+    
+    ' Write table rows and cells
+    For i = 1 To combinedRange.Rows.Count
+        ts.WriteLine "  <tr>"
+        For j = 1 To combinedRange.Columns.Count
+            Dim cellValue As String
+            cellValue = wsTemp.Cells(i, j).Value
+            Dim bgColor As String
+            bgColor = wsTemp.Cells(i, j).Interior.Color
+            If bgColor <> 0 Then
+                bgColor = "#" & Right("000000" & Hex(bgColor), 6)
+            Else
+                bgColor = "transparent"
+            End If
+            ts.WriteLine "    <td style='background-color: " & bgColor & ";'>" & cellValue & "</td>"
+        Next j
+        ts.WriteLine "  </tr>"
+    Next i
+    
+    ' Write HTML footer
+    ts.WriteLine "</table></body></html>"
+    ts.Close
     
     ' Clean up: Delete the temporary worksheet
     Application.DisplayAlerts = False
     wsTemp.Delete
     Application.DisplayAlerts = True
-End Sub 
+End Sub
