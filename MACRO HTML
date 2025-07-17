@@ -1,67 +1,9 @@
-Sub CombineRangesToHTML()
-    Dim wb As Workbook
-    Dim wsTemp As Worksheet
-    Dim wsSummer As Worksheet, wsRank As Worksheet, wsQuarterly As Worksheet
-    Dim rngSummer As Range, rngRank As Range, rngQuarterly As Range
-    Dim filePath As String
-    Dim pasteRow As Long
-    
-    ' Set the workbook
-    Set wb = ThisWorkbook
-    
-    ' Set the source sheets and ranges
-    Set wsSummer = wb.Sheets("Summer")
-    Set wsRank = wb.Sheets("Rank Summary")
-    Set wsQuarterly = wb.Sheets("Quarterly Summary")
-    Set rngSummer = wsSummer.Range("D3:I29")
-    Set rngRank = wsRank.Range("B1:Y33")
-    Set rngQuarterly = wsQuarterly.Range("L36:Z67")
-    
-    ' Create a temporary worksheet
-    Set wsTemp = wb.Sheets.Add
-    wsTemp.Name = "TempHTMLExport"
-    pasteRow = 1
-    
-    ' Copy Summer range (D3:I29) - Values and Formatting
-    rngSummer.Copy
-    With wsTemp.Cells(pasteRow, 1)
-        .PasteSpecial Paste:=xlPasteValues
-        .PasteSpecial Paste:=xlPasteFormats
-    End With
-    pasteRow = pasteRow + rngSummer.Rows.Count + 2 ' Add 2 rows as spacer
-    
-    ' Copy Rank Summary range (B1:Y33) - Values and Formatting
-    rngRank.Copy
-    With wsTemp.Cells(pasteRow, 1)
-        .PasteSpecial Paste:=xlPasteValues
-        .PasteSpecial Paste:=xlPasteFormats
-    End With
-    pasteRow = pasteRow + rngRank.Rows.Count + 2 ' Add 2 rows as spacer
-    
-    ' Copy Quarterly Summary range (L36:Z67) - Values and Formatting
-    rngQuarterly.Copy
-    With wsTemp.Cells(pasteRow, 1)
-        .PasteSpecial Paste:=xlPasteValues
-        .PasteSpecial Paste:=xlPasteFormats
-    End With
-    
-    ' Define the combined range in the temp sheet
-    Dim combinedRange As Range
-    Set combinedRange = wsTemp.Range("A1:Z" & pasteRow + rngQuarterly.Rows.Count - 1)
-    
-    ' Export the combined range to HTML
-    filePath = "C:\Output\CombinedRanges.html"
-    With wb.PublishObjects.Add( _
-        SourceType:=xlSourceRange, _
-        Filename:=filePath, _
-        Sheet:=wsTemp.Name, _
-        Source:=combinedRange.Address, _
-        HtmlType:=xlHtmlStatic)
-        .Publish (True)
-    End With
-    
-    ' Clean up: Delete the temporary worksheet
-    Application.DisplayAlerts = False
-    wsTemp.Delete
-    Application.DisplayAlerts = True
-End Sub
+Public Function GetRowCount(sheetName As String) As Long
+    Dim ws As Worksheet
+    On Error GoTo SheetNotFound
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    GetRowCount = ws.UsedRange.Rows.Count
+    Exit Function
+SheetNotFound:
+    GetRowCount = -1 'error code for missing sheet
+End Function
