@@ -1,17 +1,23 @@
-Sub WriteAndDragFormulas()
+
+Function GetLastRow(sheetName As String) As Long
     Dim ws As Worksheet
     Dim lastRow As Long
-
-    Set ws = ActiveSheet
-    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
-
-    ' Write formulas in the first row
-    ws.Range("A1").Formula = "=B1+C1"
-    ws.Range("G1").Formula = "=D1*E1"
-    ws.Range("H1").Formula = "=F1/2"
-
-    ' Autofill formulas down to last data row
-    ws.Range("A1").AutoFill Destination:=ws.Range("A1:A" & lastRow)
-    ws.Range("G1").AutoFill Destination:=ws.Range("G1:G" & lastRow)
-    ws.Range("H1").AutoFill Destination:=ws.Range("H1:H" & lastRow)
-End Sub
+    
+    On Error GoTo ErrHandler
+    
+    Set ws = ThisWorkbook.Sheets(sheetName)
+    
+    'Find the last non-empty row in column A starting from A4
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    
+    'If the last row is above row 4, then return 4 (meaning no data below A4)
+    If lastRow < 4 Then
+        lastRow = 4
+    End If
+    
+    GetLastRow = lastRow
+    Exit Function
+    
+ErrHandler:
+    GetLastRow = -1  'Return -1 in case of error
+End Function
