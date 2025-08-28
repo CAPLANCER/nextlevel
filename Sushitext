@@ -1,23 +1,15 @@
-
-Function GetLastRow(sheetName As String) As Long
+Sub DeleteSheetsWithIndex()
     Dim ws As Worksheet
-    Dim lastRow As Long
+    Dim sheetName As String
     
-    On Error GoTo ErrHandler
+    Application.DisplayAlerts = False   ' Turn off alerts (no delete confirmation)
     
-    Set ws = ThisWorkbook.Sheets(sheetName)
+    For Each ws In ThisWorkbook.Worksheets
+        sheetName = LCase(ws.Name) ' Convert to lowercase for case-insensitive check
+        If InStr(sheetName, "index") > 0 Then
+            ws.Delete
+        End If
+    Next ws
     
-    'Find the last non-empty row in column A starting from A4
-    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-    
-    'If the last row is above row 4, then return 4 (meaning no data below A4)
-    If lastRow < 4 Then
-        lastRow = 4
-    End If
-    
-    GetLastRow = lastRow
-    Exit Function
-    
-ErrHandler:
-    GetLastRow = -1  'Return -1 in case of error
-End Function
+    Application.DisplayAlerts = True    ' Turn alerts back on
+End Sub
