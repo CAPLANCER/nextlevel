@@ -1,15 +1,49 @@
-Sub DeleteSheetsWithIndex()
+Sub RefreshG1AndAutofitAllSheets()
+    Dim oldCalc As XlCalculation
     Dim ws As Worksheet
-    Dim sheetName As String
-    
-    Application.DisplayAlerts = False   ' Turn off alerts (no delete confirmation)
-    
+    Dim c As Range
+    Dim f As String
+
+    oldCalc = Application.Calculation
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.DisplayAlerts = False
+    Application.Calculation = xlCalculationAutomatic
+
     For Each ws In ThisWorkbook.Worksheets
-        sheetName = LCase(ws.Name) ' Convert to lowercase for case-insensitive check
-        If InStr(sheetName, "index") > 0 Then
-            ws.Delete
+        Set c = ws.Range("G1")
+
+        ' Re-enter the formula in G1 (handles the "manual edit fixes it" scenario)
+        If c.NumberFormat = "@" And Left$(CStr(c.Value2), 1) = "=" Then
+            ' If G1 is text-formatted but contains a formula string, convert to real formula
+            f = CStr(c.Value2)
+            c.NumberFormat = "General"
+            c.Formula = f
+        ElseIf c.HasFormula Then
+            ' Normal case: force re-entry of the existing formula
+            f = c.Formula
+            c.Formula = f
+        Else
+            ' No formula: still "dirty" the cell to trigger dependents if any
+            c.Value = c.Value
         End If
+
+        ' Try to recalc direct dependents (if any), then autofit this sheet
+        On Error Resume Next
+        If Not c.Dependents Is Nothing Then c.Dependents.Calculate
+        ' AutoFit only the used range (faster, avoids entire-sheet widenings)
+        If Application.WorksheetFunction.CountA(ws.Cells) > 0 Then
+            ws.UsedRange.Columns.AutoFit
+            ws.UsedRange.Rows.AutoFit
+        End If
+        On Error GoTo 0
     Next ws
-    
-    Application.DisplayAlerts = True    ' Turn alerts back on
+
+    ' Rebuild dependency tree & recalc everything (belt-and-suspenders)
+    Application.CalculateFullRebuild
+
+    Application.Calculation = oldCalc
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+    Application.DisplayAlerts = True
 End Sub
