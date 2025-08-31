@@ -1,49 +1,23 @@
-Sub RefreshG1AndAutofitAllSheets()
-    Dim oldCalc As XlCalculation
+Sub AutoFilterAndSort()
     Dim ws As Worksheet
-    Dim c As Range
-    Dim f As String
+    Dim lastRow As Long
+    Dim rng As Range
 
-    oldCalc = Application.Calculation
-    Application.ScreenUpdating = False
-    Application.EnableEvents = False
-    Application.DisplayAlerts = False
-    Application.Calculation = xlCalculationAutomatic
+    ' Work on the active sheet (change to ThisWorkbook.Worksheets("SheetName") if needed)
+    Set ws = ActiveSheet
 
-    For Each ws In ThisWorkbook.Worksheets
-        Set c = ws.Range("G1")
+    ' Find the last row based on column A
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
 
-        ' Re-enter the formula in G1 (handles the "manual edit fixes it" scenario)
-        If c.NumberFormat = "@" And Left$(CStr(c.Value2), 1) = "=" Then
-            ' If G1 is text-formatted but contains a formula string, convert to real formula
-            f = CStr(c.Value2)
-            c.NumberFormat = "General"
-            c.Formula = f
-        ElseIf c.HasFormula Then
-            ' Normal case: force re-entry of the existing formula
-            f = c.Formula
-            c.Formula = f
-        Else
-            ' No formula: still "dirty" the cell to trigger dependents if any
-            c.Value = c.Value
-        End If
+    ' Define the full range starting from A3 to last row, up to column I
+    Set rng = ws.Range("A3:I" & lastRow)
 
-        ' Try to recalc direct dependents (if any), then autofit this sheet
-        On Error Resume Next
-        If Not c.Dependents Is Nothing Then c.Dependents.Calculate
-        ' AutoFit only the used range (faster, avoids entire-sheet widenings)
-        If Application.WorksheetFunction.CountA(ws.Cells) > 0 Then
-            ws.UsedRange.Columns.AutoFit
-            ws.UsedRange.Rows.AutoFit
-        End If
-        On Error GoTo 0
-    Next ws
+    ' Clear any existing filters
+    If ws.AutoFilterMode Then ws.AutoFilterMode = False
 
-    ' Rebuild dependency tree & recalc everything (belt-and-suspenders)
-    Application.CalculateFullRebuild
+    ' Apply AutoFilter to the defined range
+    rng.AutoFilter
 
-    Application.Calculation = oldCalc
-    Application.ScreenUpdating = True
-    Application.EnableEvents = True
-    Application.DisplayAlerts = True
+    ' Sort by column I (the 9th column of the range), descending
+    rng.Sort Key1:=ws.Range("I3"), Order1:=xlDescending, Header:=xlYes
 End Sub
