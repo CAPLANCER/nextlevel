@@ -1,36 +1,23 @@
-Sub AutoFilterAndSort_AllSheets()
+Sub CopyAndRenameSheet(sourcePath As String, targetPath As String, sourceSheetName As String, newSheetName As String)
+    Dim sourceWB As Workbook
+    Dim targetWB As Workbook
     Dim ws As Worksheet
-    Dim lastRow As Long
-    Dim rng As Range
-
-    Application.ScreenUpdating = False
-    Application.EnableEvents = False
-
-    For Each ws In ThisWorkbook.Worksheets
-        ' Skip Summary and Pds
-        If ws.Name <> "Summary" And ws.Name <> "Pds" Then
-            With ws
-                ' Find the last row based on column A
-                lastRow = .Cells(.Rows.Count, "A").End(xlUp).Row
-
-                ' Only proceed if there is data beyond header
-                If lastRow > 3 Then
-                    ' Define the range from A3 to I:lastRow
-                    Set rng = .Range("A3:I" & lastRow)
-
-                    ' Clear any existing filters
-                    If .AutoFilterMode Then .AutoFilterMode = False
-
-                    ' Apply AutoFilter to the range
-                    rng.AutoFilter
-
-                    ' Sort by column I (the 9th column of range), descending
-                    rng.Sort Key1:=.Range("I3"), Order1:=xlDescending, Header:=xlYes
-                End If
-            End With
-        End If
-    Next ws
-
-    Application.ScreenUpdating = True
-    Application.EnableEvents = True
+    
+    '--- open workbooks ---
+    Set sourceWB = Workbooks.Open(sourcePath)
+    Set targetWB = Workbooks.Open(targetPath)
+    
+    '--- set worksheet to copy ---
+    Set ws = sourceWB.Sheets(sourceSheetName)
+    
+    '--- copy to target workbook (at the end) ---
+    ws.Copy After:=targetWB.Sheets(targetWB.Sheets.Count)
+    
+    '--- rename the newly copied sheet ---
+    targetWB.Sheets(targetWB.Sheets.Count).Name = newSheetName
+    
+    '--- save & close ---
+    targetWB.Save
+    sourceWB.Close False
+    targetWB.Close False
 End Sub
