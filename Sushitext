@@ -1,36 +1,18 @@
-Sub MoveAndModifySheets(summaryPath As String, SheetName As String, NewSheetName As String)
-
-    Dim wbTarget As Workbook
-    Dim wsSource As Worksheet
-    Dim wsTarget As Worksheet
-    Dim sh As Worksheet
-    Dim sheetExists As Boolean
+Sub CloseWorkbookByPath(filePath As String)
+    Dim wb As Workbook
+    Dim found As Boolean
+    found = False
     
-    sheetExists = False
-    Set wbTarget = ActiveWorkbook
-    
-    'Open the source workbook
-    Set wbSource = Workbooks.Open(summaryPath)
-    
-    'Check if NewSheetName already exists
-    For Each sh In wbTarget.Sheets
-        If sh.Name = NewSheetName Then
-            sheetExists = True
+    ' Loop through all open workbooks
+    For Each wb In Application.Workbooks
+        If StrComp(wb.FullName, filePath, vbTextCompare) = 0 Then
+            wb.Close SaveChanges:=False   ' Change to True if you want to save before closing
+            found = True
             Exit For
         End If
-    Next sh
+    Next wb
     
-    'Only copy if the sheet does not already exist
-    If Not sheetExists Then
-        wbSource.Sheets(SheetName).Copy After:=wbTarget.Sheets(wbTarget.Sheets.Count)
-        Set wsTarget = wbTarget.Sheets(wbTarget.Sheets.Count)
-        
-        'Rename copied sheet
-        If wsTarget.Name <> NewSheetName Then
-            wsTarget.Name = NewSheetName
-        End If
-    Else
-        MsgBox "Sheet '" & NewSheetName & "' already exists. Skipping copy."
+    If Not found Then
+        MsgBox "Workbook not found: " & filePath, vbExclamation
     End If
-    
 End Sub
