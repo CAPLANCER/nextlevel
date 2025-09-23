@@ -1,23 +1,36 @@
-Sub CopyAndRenameSheet(sourcePath As String, targetPath As String, sourceSheetName As String, newSheetName As String)
-    Dim sourceWB As Workbook
-    Dim targetWB As Workbook
-    Dim ws As Worksheet
+Sub MoveAndModifySheets(summaryPath As String, SheetName As String, NewSheetName As String)
+
+    Dim wbTarget As Workbook
+    Dim wsSource As Worksheet
+    Dim wsTarget As Worksheet
+    Dim sh As Worksheet
+    Dim sheetExists As Boolean
     
-    '--- open workbooks ---
-    Set sourceWB = Workbooks.Open(sourcePath)
-    Set targetWB = Workbooks.Open(targetPath)
+    sheetExists = False
+    Set wbTarget = ActiveWorkbook
     
-    '--- set worksheet to copy ---
-    Set ws = sourceWB.Sheets(sourceSheetName)
+    'Open the source workbook
+    Set wbSource = Workbooks.Open(summaryPath)
     
-    '--- copy to target workbook (at the end) ---
-    ws.Copy After:=targetWB.Sheets(targetWB.Sheets.Count)
+    'Check if NewSheetName already exists
+    For Each sh In wbTarget.Sheets
+        If sh.Name = NewSheetName Then
+            sheetExists = True
+            Exit For
+        End If
+    Next sh
     
-    '--- rename the newly copied sheet ---
-    targetWB.Sheets(targetWB.Sheets.Count).Name = newSheetName
+    'Only copy if the sheet does not already exist
+    If Not sheetExists Then
+        wbSource.Sheets(SheetName).Copy After:=wbTarget.Sheets(wbTarget.Sheets.Count)
+        Set wsTarget = wbTarget.Sheets(wbTarget.Sheets.Count)
+        
+        'Rename copied sheet
+        If wsTarget.Name <> NewSheetName Then
+            wsTarget.Name = NewSheetName
+        End If
+    Else
+        MsgBox "Sheet '" & NewSheetName & "' already exists. Skipping copy."
+    End If
     
-    '--- save & close ---
-    targetWB.Save
-    sourceWB.Close False
-    targetWB.Close False
 End Sub
