@@ -1,18 +1,47 @@
-Sub CloseWorkbookByPath(filePath As String)
-    Dim wb As Workbook
-    Dim found As Boolean
-    found = False
+Sub HighlightAndCleanSheets()
+
+    Dim ws As Worksheet
+    Dim lastCol As Long
+    Dim foundCell As Range
+    Dim delCell As Range
+    Dim searchRng As Range
+    Dim schemeColor As Long
+    Dim iciciColor As Long
     
-    ' Loop through all open workbooks
-    For Each wb In Application.Workbooks
-        If StrComp(wb.FullName, filePath, vbTextCompare) = 0 Then
-            wb.Close SaveChanges:=False   ' Change to True if you want to save before closing
-            found = True
-            Exit For
+    ' Define colors (Excel RGB equivalents)
+    schemeColor = RGB(192, 80, 77)        ' Orange, Accent 2, Darker 25%
+    iciciColor = RGB(244, 177, 131)       ' Orange, Accent 2, Lighter 40%
+    
+    ' Loop through all worksheets in the workbook
+    For Each ws In ThisWorkbook.Worksheets
+        
+        ' Define search range as column A (skip empty sheets)
+        If Application.WorksheetFunction.CountA(ws.Cells) = 0 Then GoTo NextSheet
+        Set searchRng = ws.Columns("A")
+        
+        ' === 1️⃣ Highlight "scheme" row ===
+        Set foundCell = searchRng.Find(What:="scheme", LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
+        If Not foundCell Is Nothing Then
+            lastCol = ws.Cells(foundCell.Row, ws.Columns.Count).End(xlToLeft).Column
+            ws.Range(ws.Cells(foundCell.Row, 1), ws.Cells(foundCell.Row, lastCol)).Interior.Color = schemeColor
         End If
-    Next wb
-    
-    If Not found Then
-        MsgBox "Workbook not found: " & filePath, vbExclamation
-    End If
+        
+        ' === 2️⃣ Highlight "ICICI prudential" row ===
+        Set foundCell = searchRng.Find(What:="ICICI prudential", LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
+        If Not foundCell Is Nothing Then
+            lastCol = ws.Cells(foundCell.Row, ws.Columns.Count).End(xlToLeft).Column
+            ws.Range(ws.Cells(foundCell.Row, 1), ws.Cells(foundCell.Row, lastCol)).Interior.Color = iciciColor
+        End If
+        
+        ' === 3️⃣ Delete all rows from "Less than" (and after) ===
+        Set delCell = searchRng.Find(What:="less than", LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
+        If Not delCell Is Nothing Then
+            ws.Rows(delCell.Row & ":" & ws.Rows.Count).Delete
+        End If
+        
+NextSheet:
+    Next ws
+
+    MsgBox "Macro completed successfully!", vbInformation
+
 End Sub
