@@ -1,47 +1,127 @@
-Sub HighlightAndCleanSheets()
+Option Explicit
 
+Sub ProcessAllSheets_SafeMerged()
     Dim ws As Worksheet
+    Dim lastUsedRow As Long, r As Long
+    Dim rowText As String
     Dim lastCol As Long
-    Dim foundCell As Range
-    Dim delCell As Range
-    Dim searchRng As Range
-    Dim schemeColor As Long
-    Dim iciciColor As Long
+    Dim deleteFromRow As Long
+    Dim schemeHits As Collection, iciciHits As Collection
+    Dim vKey As Variant
     
-    ' Define colors (Excel RGB equivalents)
-    schemeColor = RGB(192, 80, 77)        ' Orange, Accent 2, Darker 25%
-    iciciColor = RGB(244, 177, 131)       ' Orange, Accent 2, Lighter 40%
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
     
-    ' Loop through all worksheets in the workbook
     For Each ws In ThisWorkbook.Worksheets
-        
-        ' Define search range as column A (skip empty sheets)
+        On Error GoTo NextSheet ' in case sheet causes runtime errors
+        ' Skip totally empty sheets
         If Application.WorksheetFunction.CountA(ws.Cells) = 0 Then GoTo NextSheet
-        Set searchRng = ws.Columns("A")
+        ' Optional: skip hidden sheets - uncomment to enable
+        ' If ws.Visible <> xlSheetVisible Then GoTo NextSheet
         
-        ' === 1️⃣ Highlight "scheme" row ===
-        Set foundCell = searchRng.Find(What:="scheme", LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
-        If Not foundCell Is Nothing Then
-            lastCol = ws.Cells(foundCell.Row, ws.Columns.Count).End(xlToLeft).Column
-            ws.Range(ws.Cells(foundCell.Row, 1), ws.Cells(foundCell.Row, lastCol)).Interior.Color = schemeColor
-        End If
+        Set schemeHits = New Collection
+        Set iciciHits = New Collection
+        deleteFromRow = 0
         
-        ' === 2️⃣ Highlight "ICICI prudential" row ===
-        Set foundCell = searchRng.Find(What:="ICICI prudential", LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
-        If Not foundCell Is Nothing Then
-            lastCol = ws.Cells(foundCell.Row, ws.Columns.Count).End(xlToLeft).Column
-            ws.Range(ws.Cells(foundCell.Row, 1), ws.Cells(foundCell.Row, lastCol)).Interior.Color = iciciColor
-        End If
+        ' find last used row in sheet
+        lastUsedRow = 0
+        On Error Resume Next
+        lastUsedRow = ws.UsedRange.Rows(ws.UsedRange.Rows.Count).Row + ws.UsedRange.Rows.Count - 1
+        If lastUsedRow = 0 Then lastUsedRow = ws.Cells.Find(What:="*", LookIn:=xlFormulas, _
+                             LookAt:=xlPart, SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+        On Error GoTo 0
         
-        ' === 3️⃣ Delete all rows from "Less than" (and after) ===
-        Set delCell = searchRng.Find(What:="less than", LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
-        If Not delCell Is Nothing Then
-            ws.Rows(delCell.Row & ":" & ws.Rows.Count).Delete
+        If lastUsedRow = 0 Then GoTo NextSheet
+        
+        ' Loop from row 1 to lastUsedRow (or from headerRow if you have headers)
+        For r = 1 To lastUsedRow
+            ' We always check Column A top-left of merge areas
+            With ws.Cells(r, "A")
+                rowText = "" ' reset
+                If .MergeCells Then
+                    ' Get concatenated text of the merge area's top-left cell (that holds value)
+                    rowText = CStr(.MergeArea.Cells(1, 1).Value)
+                Else
+                    rowText = CStr(.Value)
+                End If
+            End With
+            
+            rowText = Trim(LCase(rowText))
+            If Len(rowText) > 0 Then
+                ' Collect scheme hits (partial match)
+                If InStr(rowText, "scheme") > 0 Then
+                    schemeHits.Add r
+                End If
+                ' Collect ICICI prudential hits (partial match)
+                If InStr(rowText, "icici prudential") > 0 Then
+                    iciciHits.Add r
+                End If
+                ' If we haven't set deletion row yet, check less than
+                If deleteFromRow = 0 Then
+                    If InStr(rowText, "less than") > 0 Then
+                        deleteFromRow = r
+                        ' we do not exit loop — still want to collect scheme/icici above this row (depends on requirement)
+                        ' If you want to ignore coloring below the deletion row, you could Exit For here.
+                    End If
+                End If
+            End If
+        Next r
+        
+        ' Color scheme rows (up to last non-empty column in that row)
+        For Each vKey In CollectionToArray(schemeHits)
+            lastCol = LastNonEmptyColumnInRow(ws, CLng(vKey))
+            If lastCol < 1 Then lastCol = 1
+            ws.Range(ws.Cells(CLng(vKey), 1), ws.Cells(CLng(vKey), lastCol)).Interior.Color = RGB(192, 80, 77) ' Orange Accent2 Darker25
+        Next vKey
+        
+        ' Color ICICI rows
+        For Each vKey In CollectionToArray(iciciHits)
+            lastCol = LastNonEmptyColumnInRow(ws, CLng(vKey))
+            If lastCol < 1 Then lastCol = 1
+            ws.Range(ws.Cells(CLng(vKey), 1), ws.Cells(CLng(vKey), lastCol)).Interior.Color = RGB(244, 177, 131) ' Orange Accent2 Lighter40
+        Next vKey
+        
+        ' Delete from deleteFromRow to bottom if found
+        If deleteFromRow > 0 Then
+            ws.Rows(deleteFromRow & ":" & ws.Rows.Count).Delete
         End If
         
 NextSheet:
+        ' cleanup
+        On Error Resume Next
+        Set schemeHits = Nothing
+        Set iciciHits = Nothing
+        On Error GoTo 0
     Next ws
-
-    MsgBox "Macro completed successfully!", vbInformation
-
+    
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    
+    MsgBox "Processing complete.", vbInformation
 End Sub
+
+' Helper: return last non-empty column index in given row
+Private Function LastNonEmptyColumnInRow(ws As Worksheet, ByVal rowNum As Long) As Long
+    Dim c As Long
+    ' Find last column with any value in the row by searching backwards
+    For c = ws.Columns.Count To 1 Step -1
+        If Len(Trim(CStr(ws.Cells(rowNum, c).Value))) > 0 Then
+            LastNonEmptyColumnInRow = c
+            Exit Function
+        End If
+    Next c
+    LastNonEmptyColumnInRow = 1 ' fallback to column A
+End Function
+
+' Utility: convert Collection to array to avoid "collection modified" issues
+Private Function CollectionToArray(col As Collection) As Variant
+    Dim arr() As Variant
+    Dim i As Long
+    ReDim arr(1 To col.Count)
+    For i = 1 To col.Count
+        arr(i) = col(i)
+    Next i
+    CollectionToArray = arr
+End Function
