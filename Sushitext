@@ -1,9 +1,11 @@
 Sub HighlightAndDelete_Simple()
-    Dim ws As Worksheet, r As Long, lastRow As Long, lastCol As Long
+    Dim ws As Worksheet
+    Dim r As Long, lastRow As Long, lastCol As Long
     Dim txt As String, delRow As Long
     Dim cell As Range
 
     Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
 
     For Each ws In ThisWorkbook.Worksheets
         If Application.WorksheetFunction.CountA(ws.Cells) = 0 Then GoTo NextSheet
@@ -11,36 +13,51 @@ Sub HighlightAndDelete_Simple()
         lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
         delRow = 0
         
-        ' Loop through each row in Column A
         For r = 1 To lastRow
             Set cell = ws.Cells(r, "A")
             If cell.MergeCells Then Set cell = cell.MergeArea.Cells(1)
             
             txt = LCase(Trim(cell.Value))
             If txt <> "" Then
-                ' 1. Color "scheme" rows
+                
+                ' === 1. Highlight "Scheme" ===
                 If InStr(txt, "scheme") > 0 Then
                     lastCol = ws.Cells(r, ws.Columns.Count).End(xlToLeft).Column
-                    ws.Range(ws.Cells(r, 1), ws.Cells(r, lastCol)).Interior.Color = RGB(192, 80, 77)
+                    
+                    ' Highlight "Scheme" row
+                    With ws.Range(ws.Cells(r, 1), ws.Cells(r, lastCol))
+                        .Interior.Color = RGB(192, 80, 77) ' Orange Accent 2, Darker 25%
+                        .Font.Bold = True
+                    End With
+                    
+                    ' Highlight one row above (if exists)
+                    If r > 1 Then
+                        lastCol = ws.Cells(r - 1, ws.Columns.Count).End(xlToLeft).Column
+                        ws.Range(ws.Cells(r - 1, 1), ws.Cells(r - 1, lastCol)).Interior.Color = RGB(192, 80, 77)
+                    End If
                 End If
                 
-                ' 2. Color "ICICI prudential" rows
+                ' === 2. Highlight "ICICI Prudential" ===
                 If InStr(txt, "icici prudential") > 0 Then
                     lastCol = ws.Cells(r, ws.Columns.Count).End(xlToLeft).Column
-                    ws.Range(ws.Cells(r, 1), ws.Cells(r, lastCol)).Interior.Color = RGB(244, 177, 131)
+                    With ws.Range(ws.Cells(r, 1), ws.Cells(r, lastCol))
+                        .Interior.Color = RGB(244, 177, 131) ' Orange Accent 2, Lighter 40%
+                        .Font.Bold = True
+                    End With
                 End If
                 
-                ' 3. Find "less than" row to delete later
+                ' === 3. Mark row for deletion if "Less than" ===
                 If delRow = 0 And InStr(txt, "less than") > 0 Then delRow = r
             End If
         Next r
         
-        ' Delete from "Less than" and below
+        ' === 4. Delete "Less than" row and below ===
         If delRow > 0 Then ws.Rows(delRow & ":" & ws.Rows.Count).Delete
-        
+
 NextSheet:
     Next ws
 
     Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
     MsgBox "All sheets processed successfully!", vbInformation
 End Sub
