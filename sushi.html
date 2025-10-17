@@ -1,13 +1,29 @@
 Option Explicit
 
 ' === Merge tracker sheets into their respective main sheets ===
-' 1. DataTable (from UiPath) has 2 columns: [MainSheet], [TrackerSheet]
+' 1. Reads mapping directly from "Sheet1" (as seen in your screenshot)
 ' 2. For each pair:
 '       - Find last used row in MainSheet
 '       - Add 3 blank rows + "Tracker" label in Col A
 '       - Copy all data from TrackerSheet (UsedRange only)
 '       - Paste below label in MainSheet
 '       - Delete TrackerSheet after copy
+
+Public Sub Test_MergeTrackers()
+    Dim wsMap As Worksheet
+    Dim lastRow As Long
+    Dim dtMapping As Variant
+    
+    ' Read mapping from Sheet1 (adjust if needed)
+    Set wsMap = ThisWorkbook.Sheets("Sheet1")
+    lastRow = wsMap.Cells(wsMap.Rows.Count, "A").End(xlUp).Row
+    
+    ' Load Main + Tracker sheet mapping into array
+    dtMapping = wsMap.Range("A2:B" & lastRow).Value
+    
+    ' Call main sub
+    MergeTrackers dtMapping
+End Sub
 
 Public Sub MergeTrackers(dtMapping As Variant)
     Dim wb As Workbook
@@ -16,61 +32,54 @@ Public Sub MergeTrackers(dtMapping As Variant)
     Dim wsMain As Worksheet, wsTracker As Worksheet
     Dim lastRow As Long, pasteRow As Long
     Dim rngCopy As Range
-    Dim dataArr As Variant
 
     Set wb = ThisWorkbook
+    Application.ScreenUpdating = False
 
-    ' Convert DataTable to array if needed (UiPath usually passes a 2D Variant array)
-    If TypeName(dtMapping) = "Object" Then
-        MsgBox "Please ensure UiPath passes DataTable as Variant array."
-        Exit Sub
-    End If
-
-    On Error Resume Next
-
-    ' Loop through each mapping row
+    ' Loop through mapping pairs
     For i = LBound(dtMapping, 1) To UBound(dtMapping, 1)
         mainName = Trim(dtMapping(i, 1))
         trackerName = Trim(dtMapping(i, 2))
 
         If mainName <> "" And trackerName <> "" Then
-            Set wsMain = Nothing
-            Set wsTracker = Nothing
+            On Error Resume Next
             Set wsMain = wb.Sheets(mainName)
             Set wsTracker = wb.Sheets(trackerName)
+            On Error GoTo 0
             
             If Not wsMain Is Nothing And Not wsTracker Is Nothing Then
-                ' Activate main sheet
-                wsMain.Activate
                 
-                ' Find last used row
+                ' === Find last row of data in Main sheet ===
                 If Application.WorksheetFunction.CountA(wsMain.Cells) = 0 Then
                     lastRow = 1
                 Else
                     lastRow = wsMain.Cells.Find("*", , , , xlByRows, xlPrevious).Row
                 End If
                 
-                ' Add 3 blank rows
+                ' === Add 3 blank rows and "Tracker" label ===
                 pasteRow = lastRow + 3
                 wsMain.Cells(pasteRow, 1).Value = "Tracker"
                 pasteRow = pasteRow + 1
 
-                ' Copy data range from tracker sheet
+                ' === Copy data from tracker ===
                 If Application.WorksheetFunction.CountA(wsTracker.Cells) > 0 Then
                     Set rngCopy = wsTracker.UsedRange
                     rngCopy.Copy
                     wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteValues
                 End If
 
-                ' Delete tracker sheet
+                ' === Delete tracker ===
                 Application.DisplayAlerts = False
                 wsTracker.Delete
                 Application.DisplayAlerts = True
+
+            Else
+                Debug.Print "Sheet missing: " & mainName & " or " & trackerName
             End If
         End If
     Next i
 
     Application.CutCopyMode = False
-    MsgBox "All tracker sheets merged and deleted successfully.", vbInformation
-
+    Application.ScreenUpdating = True
+    MsgBox "All tracker sheets merged successfully!", vbInformation
 End Sub
