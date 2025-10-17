@@ -1,146 +1,76 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Top 3 Ranks Summary</title>
-  <style>
-    table {
-      border-collapse: collapse;
-      margin: 10px;
-      float: left;
-      font-size: 12px;
-    }
-    th, td {
-      border: 1px solid #a52a2a;
-      padding: 6px 10px;
-      text-align: center;
-      white-space: nowrap;
-    }
-    th {
-      background-color: #fff;
-      color: #a52a2a;
-    }
-    .highlight {
-      background-color: #fdd9c0;
-    }
-    caption {
-      font-weight: bold;
-      margin-bottom: 5px;
-      color: #a52a2a;
-    }
-    h2, h3, strong {
-      color: #a52a2a;
-    }
-    .section {
-      clear: both;
-      margin-top: 40px;
-    }
-  </style>
-</head>
-<body>
-  <h2>Number Of Times In Top 3 Ranks</h2>
+Option Explicit
 
-  <h3>Number Of Times In Top 3 Ranks - Gold ETF</h3>
-  <strong>May-25</strong>
+' === Merge tracker sheets into their respective main sheets ===
+' 1. DataTable (from UiPath) has 2 columns: [MainSheet], [TrackerSheet]
+' 2. For each pair:
+'       - Find last used row in MainSheet
+'       - Add 3 blank rows + "Tracker" label in Col A
+'       - Copy all data from TrackerSheet (UsedRange only)
+'       - Paste below label in MainSheet
+'       - Delete TrackerSheet after copy
 
-  <!-- Gold ETF Tables -->
-  <table>
-    <tr>
-      <th colspan="5">1 Month</th>
-    </tr>
-    <tr>
-      <th>FH Name</th>
-      <th>Rank 1</th>
-      <th>Rank 2</th>
-      <th>Rank 3</th>
-      <th>Total</th>
-    </tr>
-    <tr><td>HDFC</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-    <tr class="highlight"><td>I Pru</td><td>1</td><td>-</td><td>-</td><td>1</td></tr>
-    <tr><td>Kotak</td><td>-</td><td>1</td><td>-</td><td>1</td></tr>
-    <tr><td>Nippon</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-    <tr><td>SBI</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-  </table>
+Public Sub MergeTrackers(dtMapping As Variant)
+    Dim wb As Workbook
+    Dim i As Long
+    Dim mainName As String, trackerName As String
+    Dim wsMain As Worksheet, wsTracker As Worksheet
+    Dim lastRow As Long, pasteRow As Long
+    Dim rngCopy As Range
+    Dim dataArr As Variant
 
-  <table>
-    <tr>
-      <th colspan="5">3 Month</th>
-    </tr>
-    <tr>
-      <th>FH Name</th>
-      <th>Rank 1</th>
-      <th>Rank 2</th>
-      <th>Rank 3</th>
-      <th>Total</th>
-    </tr>
-    <tr><td>HDFC</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-    <tr class="highlight"><td>I Pru</td><td>-</td><td>1</td><td>-</td><td>1</td></tr>
-    <tr><td>Kotak</td><td>-</td><td>1</td><td>-</td><td>1</td></tr>
-    <tr><td>Nippon</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-    <tr><td>SBI</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-  </table>
+    Set wb = ThisWorkbook
 
-  <table>
-    <tr>
-      <th colspan="5">6 Month</th>
-    </tr>
-    <tr>
-      <th>FH Name</th>
-      <th>Rank 1</th>
-      <th>Rank 2</th>
-      <th>Rank 3</th>
-      <th>Total</th>
-    </tr>
-    <tr><td>HDFC</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-    <tr class="highlight"><td>I Pru</td><td>1</td><td>-</td><td>-</td><td>1</td></tr>
-    <tr><td>Kotak</td><td>-</td><td>1</td><td>-</td><td>1</td></tr>
-    <tr><td>Nippon</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-    <tr><td>SBI</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-  </table>
+    ' Convert DataTable to array if needed (UiPath usually passes a 2D Variant array)
+    If TypeName(dtMapping) = "Object" Then
+        MsgBox "Please ensure UiPath passes DataTable as Variant array."
+        Exit Sub
+    End If
 
-  <table>
-    <tr>
-      <th colspan="5">1 Year</th>
-    </tr>
-    <tr>
-      <th>FH Name</th>
-      <th>Rank 1</th>
-      <th>Rank 2</th>
-      <th>Rank 3</th>
-      <th>Total</th>
-    </tr>
-    <tr><td>HDFC</td><td>1</td><td>-</td><td>-</td><td>1</td></tr>
-    <tr class="highlight"><td>I Pru</td><td>-</td><td>1</td><td>-</td><td>1</td></tr>
-    <tr><td>Kotak</td><td>-</td><td>1</td><td>-</td><td>1</td></tr>
-    <tr><td>Nippon</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-    <tr><td>SBI</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-  </table>
+    On Error Resume Next
 
-  <div class="section">
-    <h3>Number Of Times In Top 3 Ranks - Gold FOF</h3>
-    <strong>May-25</strong>
-  </div>
+    ' Loop through each mapping row
+    For i = LBound(dtMapping, 1) To UBound(dtMapping, 1)
+        mainName = Trim(dtMapping(i, 1))
+        trackerName = Trim(dtMapping(i, 2))
 
-  <!-- Gold FOF Tables -->
-  <table>
-    <tr>
-      <th colspan="5">1 Month</th>
-    </tr>
-    <tr>
-      <th>FH Name</th>
-      <th>Rank 1</th>
-      <th>Rank 2</th>
-      <th>Rank 3</th>
-      <th>Total</th>
-    </tr>
-    <tr><td>HDFC</td><td>1</td><td>-</td><td>-</td><td>1</td></tr>
-    <tr class="highlight"><td>I Pru</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-    <tr><td>Kotak</td><td>-</td><td>-</td><td>-</td><td>0</td></tr>
-    <tr><td>Nippon</td><td>-</td><td>1</td><td>-</td><td>1</td></tr>
-    <tr><td>SBI</td><td>-</td><td>-</td><td>1</td><td>1</td></tr>
-  </table>
+        If mainName <> "" And trackerName <> "" Then
+            Set wsMain = Nothing
+            Set wsTracker = Nothing
+            Set wsMain = wb.Sheets(mainName)
+            Set wsTracker = wb.Sheets(trackerName)
+            
+            If Not wsMain Is Nothing And Not wsTracker Is Nothing Then
+                ' Activate main sheet
+                wsMain.Activate
+                
+                ' Find last used row
+                If Application.WorksheetFunction.CountA(wsMain.Cells) = 0 Then
+                    lastRow = 1
+                Else
+                    lastRow = wsMain.Cells.Find("*", , , , xlByRows, xlPrevious).Row
+                End If
+                
+                ' Add 3 blank rows
+                pasteRow = lastRow + 3
+                wsMain.Cells(pasteRow, 1).Value = "Tracker"
+                pasteRow = pasteRow + 1
 
-  <!-- Repeat 3M, 6M, 1Y for Gold FOF like above -->
+                ' Copy data range from tracker sheet
+                If Application.WorksheetFunction.CountA(wsTracker.Cells) > 0 Then
+                    Set rngCopy = wsTracker.UsedRange
+                    rngCopy.Copy
+                    wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteValues
+                End If
 
-</body>
-</html>
+                ' Delete tracker sheet
+                Application.DisplayAlerts = False
+                wsTracker.Delete
+                Application.DisplayAlerts = True
+            End If
+        End If
+    Next i
+
+    Application.CutCopyMode = False
+    MsgBox "All tracker sheets merged and deleted successfully.", vbInformation
+
+End Sub
