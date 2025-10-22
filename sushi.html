@@ -1,29 +1,13 @@
 Option Explicit
 
 ' === Merge tracker sheets into their respective main sheets ===
-' 1. Reads mapping directly from "Sheet1" (as seen in your screenshot)
-' 2. For each pair:
-'       - Find last used row in MainSheet
-'       - Add 3 blank rows + "Tracker" label in Col A
-'       - Copy all data from TrackerSheet (UsedRange only)
-'       - Paste below label in MainSheet
-'       - Delete TrackerSheet after copy
-
-Public Sub Test_MergeTrackers()
-    Dim wsMap As Worksheet
-    Dim lastRow As Long
-    Dim dtMapping As Variant
-    
-    ' Read mapping from Sheet1 (adjust if needed)
-    Set wsMap = ThisWorkbook.Sheets("Sheet1")
-    lastRow = wsMap.Cells(wsMap.Rows.Count, "A").End(xlUp).Row
-    
-    ' Load Main + Tracker sheet mapping into array
-    dtMapping = wsMap.Range("A2:B" & lastRow).Value
-    
-    ' Call main sub
-    MergeTrackers dtMapping
-End Sub
+' Reads mapping from a given range or UiPath DataTable
+' For each pair:
+'   - Find last used row in Main sheet
+'   - Add 3 blank rows + "Tracker" label
+'   - Copy data (with formatting) from Tracker sheet
+'   - Paste below label in Main sheet
+'   - Delete Tracker sheet after copy
 
 Public Sub MergeTrackers(dtMapping As Variant)
     Dim wb As Workbook
@@ -35,8 +19,9 @@ Public Sub MergeTrackers(dtMapping As Variant)
 
     Set wb = ThisWorkbook
     Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
 
-    ' Loop through mapping pairs
+    ' Loop through mapping rows
     For i = LBound(dtMapping, 1) To UBound(dtMapping, 1)
         mainName = Trim(dtMapping(i, 1))
         trackerName = Trim(dtMapping(i, 2))
@@ -49,37 +34,44 @@ Public Sub MergeTrackers(dtMapping As Variant)
             
             If Not wsMain Is Nothing And Not wsTracker Is Nothing Then
                 
-                ' === Find last row of data in Main sheet ===
+                ' === Find last used row in main sheet ===
                 If Application.WorksheetFunction.CountA(wsMain.Cells) = 0 Then
                     lastRow = 1
                 Else
                     lastRow = wsMain.Cells.Find("*", , , , xlByRows, xlPrevious).Row
                 End If
                 
-                ' === Add 3 blank rows and "Tracker" label ===
+                ' === Add 3 blank rows + "Tracker" label ===
                 pasteRow = lastRow + 3
                 wsMain.Cells(pasteRow, 1).Value = "Tracker"
+                wsMain.Cells(pasteRow, 1).Font.Bold = True
+                wsMain.Cells(pasteRow, 1).Font.Color = RGB(255, 255, 255)
+                wsMain.Cells(pasteRow, 1).Interior.Color = RGB(192, 80, 77) ' Orange Accent 2, Darker 25%
+                
                 pasteRow = pasteRow + 1
 
-                ' === Copy data from tracker ===
+                ' === Copy Tracker sheet data with formatting ===
                 If Application.WorksheetFunction.CountA(wsTracker.Cells) > 0 Then
                     Set rngCopy = wsTracker.UsedRange
                     rngCopy.Copy
-                    wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteValues
+                    
+                    ' Paste all (values, formatting, merged cells, etc.)
+                    wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteAll
+                    
+                    ' Optional: also match column widths for clean look
+                    wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteColumnWidths
                 End If
 
-                ' === Delete tracker ===
-                Application.DisplayAlerts = False
+                ' === Delete Tracker sheet ===
                 wsTracker.Delete
-                Application.DisplayAlerts = True
-
             Else
-                Debug.Print "Sheet missing: " & mainName & " or " & trackerName
+                Debug.Print "Missing sheet: " & mainName & " or " & trackerName
             End If
         End If
     Next i
 
     Application.CutCopyMode = False
+    Application.DisplayAlerts = True
     Application.ScreenUpdating = True
-    MsgBox "All tracker sheets merged successfully!", vbInformation
+    MsgBox "All tracker sheets merged (with formatting) and deleted successfully!", vbInformation
 End Sub
