@@ -1,77 +1,93 @@
 Option Explicit
 
-' === Merge tracker sheets into their respective main sheets ===
-' Reads mapping from a given range or UiPath DataTable
-' For each pair:
-'   - Find last used row in Main sheet
-'   - Add 3 blank rows + "Tracker" label
-'   - Copy data (with formatting) from Tracker sheet
-'   - Paste below label in Main sheet
-'   - Delete Tracker sheet after copy
-
-Public Sub MergeTrackers(dtMapping As Variant)
+Public Sub MergeTrackers_Test()
+    Dim wsMap As Worksheet
     Dim wb As Workbook
-    Dim i As Long
+    Dim i As Long, lastRow As Long
     Dim mainName As String, trackerName As String
     Dim wsMain As Worksheet, wsTracker As Worksheet
-    Dim lastRow As Long, pasteRow As Long
+    Dim lastRowMain As Long, pasteRow As Long
     Dim rngCopy As Range
+    Dim logMsg As String
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = True
 
     Set wb = ThisWorkbook
-    Application.ScreenUpdating = False
-    Application.DisplayAlerts = False
+    Set wsMap = wb.Sheets("Sheet1") ' mapping sheet name
 
-    ' Loop through mapping rows
-    For i = LBound(dtMapping, 1) To UBound(dtMapping, 1)
-        mainName = Trim(dtMapping(i, 1))
-        trackerName = Trim(dtMapping(i, 2))
-
+    ' Find last row in mapping table
+    lastRow = wsMap.Cells(wsMap.Rows.Count, "A").End(xlUp).Row
+    Debug.Print "Total mappings found: " & (lastRow - 1)
+    
+    On Error GoTo ErrHandler
+    
+    ' Loop through mapping table
+    For i = 2 To lastRow
+        mainName = Trim(wsMap.Cells(i, 1).Value)
+        trackerName = Trim(wsMap.Cells(i, 2).Value)
+        Debug.Print "Processing Main: " & mainName & " | Tracker: " & trackerName
+        
         If mainName <> "" And trackerName <> "" Then
             On Error Resume Next
             Set wsMain = wb.Sheets(mainName)
             Set wsTracker = wb.Sheets(trackerName)
             On Error GoTo 0
             
-            If Not wsMain Is Nothing And Not wsTracker Is Nothing Then
-                
-                ' === Find last used row in main sheet ===
-                If Application.WorksheetFunction.CountA(wsMain.Cells) = 0 Then
-                    lastRow = 1
-                Else
-                    lastRow = wsMain.Cells.Find("*", , , , xlByRows, xlPrevious).Row
-                End If
-                
-                ' === Add 3 blank rows + "Tracker" label ===
-                pasteRow = lastRow + 3
-                wsMain.Cells(pasteRow, 1).Value = "Tracker"
-                wsMain.Cells(pasteRow, 1).Font.Bold = True
-                wsMain.Cells(pasteRow, 1).Font.Color = RGB(255, 255, 255)
-                wsMain.Cells(pasteRow, 1).Interior.Color = RGB(192, 80, 77) ' Orange Accent 2, Darker 25%
-                
-                pasteRow = pasteRow + 1
-
-                ' === Copy Tracker sheet data with formatting ===
-                If Application.WorksheetFunction.CountA(wsTracker.Cells) > 0 Then
-                    Set rngCopy = wsTracker.UsedRange
-                    rngCopy.Copy
-                    
-                    ' Paste all (values, formatting, merged cells, etc.)
-                    wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteAll
-                    
-                    ' Optional: also match column widths for clean look
-                    wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteColumnWidths
-                End If
-
-                ' === Delete Tracker sheet ===
-                wsTracker.Delete
-            Else
-                Debug.Print "Missing sheet: " & mainName & " or " & trackerName
+            ' Validate both sheets exist
+            If wsMain Is Nothing Then
+                MsgBox "Main sheet not found: " & mainName, vbExclamation
+                GoTo NextMapping
             End If
+            
+            If wsTracker Is Nothing Then
+                MsgBox "Tracker sheet not found: " & trackerName, vbExclamation
+                GoTo NextMapping
+            End If
+            
+            ' Find last used row in Main sheet
+            If Application.WorksheetFunction.CountA(wsMain.Cells) = 0 Then
+                lastRowMain = 1
+            Else
+                lastRowMain = wsMain.Cells.Find("*", , , , xlByRows, xlPrevious).Row
+            End If
+            
+            ' Add 3 blank rows and label
+            pasteRow = lastRowMain + 3
+            wsMain.Cells(pasteRow, 1).Value = "Tracker (" & trackerName & ")"
+            wsMain.Cells(pasteRow, 1).Font.Bold = True
+            wsMain.Cells(pasteRow, 1).Interior.Color = RGB(192, 80, 77)
+            wsMain.Cells(pasteRow, 1).Font.Color = vbWhite
+            pasteRow = pasteRow + 1
+            
+            ' Copy used range from tracker
+            If Application.WorksheetFunction.CountA(wsTracker.Cells) > 0 Then
+                Set rngCopy = wsTracker.UsedRange
+                Debug.Print "Copying data from tracker: " & trackerName
+                rngCopy.Copy
+                
+                ' Paste full content with formatting
+                wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteAll
+                wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteColumnWidths
+            Else
+                MsgBox "Tracker sheet " & trackerName & " is empty.", vbInformation
+            End If
+            
         End If
+        
+NextMapping:
+        Set wsMain = Nothing
+        Set wsTracker = Nothing
+        Debug.Print "-----------------------------------------"
     Next i
 
+CleanExit:
     Application.CutCopyMode = False
-    Application.DisplayAlerts = True
     Application.ScreenUpdating = True
-    MsgBox "All tracker sheets merged (with formatting) and deleted successfully!", vbInformation
+    MsgBox "Macro completed! Check Immediate Window for debug log (Ctrl + G).", vbInformation
+    Exit Sub
+
+ErrHandler:
+    MsgBox "Error: " & Err.Description & vbCrLf & "At Main: " & mainName & " | Tracker: " & trackerName, vbCritical
+    Resume CleanExit
 End Sub
