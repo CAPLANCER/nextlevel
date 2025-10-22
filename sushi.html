@@ -1,93 +1,87 @@
 Option Explicit
 
-Public Sub MergeTrackers_Test()
-    Dim wsMap As Worksheet
+Sub MergeTrackers_FromSchemeName()
     Dim wb As Workbook
-    Dim i As Long, lastRow As Long
+    Dim wsMap As Worksheet
+    Dim wsMain As Worksheet
+    Dim wsTracker As Worksheet
+    Dim lastRowMap As Long
+    Dim i As Long
     Dim mainName As String, trackerName As String
-    Dim wsMain As Worksheet, wsTracker As Worksheet
-    Dim lastRowMain As Long, pasteRow As Long
+    Dim foundCell As Range
+    Dim startRow As Long, endRow As Long, lastCol As Long
+    Dim pasteRow As Long
     Dim rngCopy As Range
-    Dim logMsg As String
 
     Application.ScreenUpdating = False
-    Application.DisplayAlerts = True
+    Application.DisplayAlerts = False
 
     Set wb = ThisWorkbook
-    Set wsMap = wb.Sheets("Sheet1") ' mapping sheet name
+    Set wsMap = wb.Sheets("Sheet1") ' Mapping sheet name — change if needed
 
-    ' Find last row in mapping table
-    lastRow = wsMap.Cells(wsMap.Rows.Count, "A").End(xlUp).Row
-    Debug.Print "Total mappings found: " & (lastRow - 1)
-    
-    On Error GoTo ErrHandler
-    
-    ' Loop through mapping table
-    For i = 2 To lastRow
+    ' Find last row in mapping table (Main | Tracker)
+    lastRowMap = wsMap.Cells(wsMap.Rows.Count, "A").End(xlUp).Row
+
+    ' Loop through each mapping pair
+    For i = 2 To lastRowMap
         mainName = Trim(wsMap.Cells(i, 1).Value)
         trackerName = Trim(wsMap.Cells(i, 2).Value)
-        Debug.Print "Processing Main: " & mainName & " | Tracker: " & trackerName
-        
+
         If mainName <> "" And trackerName <> "" Then
             On Error Resume Next
             Set wsMain = wb.Sheets(mainName)
             Set wsTracker = wb.Sheets(trackerName)
             On Error GoTo 0
-            
-            ' Validate both sheets exist
-            If wsMain Is Nothing Then
-                MsgBox "Main sheet not found: " & mainName, vbExclamation
-                GoTo NextMapping
-            End If
-            
-            If wsTracker Is Nothing Then
-                MsgBox "Tracker sheet not found: " & trackerName, vbExclamation
-                GoTo NextMapping
-            End If
-            
-            ' Find last used row in Main sheet
-            If Application.WorksheetFunction.CountA(wsMain.Cells) = 0 Then
-                lastRowMain = 1
+
+            If Not wsMain Is Nothing And Not wsTracker Is Nothing Then
+                ' === Find "Scheme Name" in tracker ===
+                Set foundCell = wsTracker.Cells.Find(What:="Scheme Name", LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
+
+                If Not foundCell Is Nothing Then
+                    startRow = Application.Max(1, foundCell.Row - 1)
+                    endRow = wsTracker.Cells.Find("*", , , , xlByRows, xlPrevious).Row
+                    lastCol = wsTracker.Cells.Find("*", , , , xlByColumns, xlPrevious).Column
+
+                    Set rngCopy = wsTracker.Range(wsTracker.Cells(startRow, 1), wsTracker.Cells(endRow, lastCol))
+
+                    ' === Find last used row in main sheet ===
+                    Dim lastRowMain As Long
+                    If Application.WorksheetFunction.CountA(wsMain.Cells) = 0 Then
+                        lastRowMain = 1
+                    Else
+                        lastRowMain = wsMain.Cells.Find("*", , , , xlByRows, xlPrevious).Row
+                    End If
+
+                    ' === Add 3 blank rows and tracker label ===
+                    pasteRow = lastRowMain + 3
+                    wsMain.Cells(pasteRow, 1).Value = "Tracker (" & trackerName & ")"
+                    wsMain.Cells(pasteRow, 1).Font.Bold = True
+                    wsMain.Cells(pasteRow, 1).Font.Color = RGB(255, 255, 255)
+                    wsMain.Cells(pasteRow, 1).Interior.Color = RGB(192, 80, 77) ' Orange Accent 2, Darker 25%
+
+                    pasteRow = pasteRow + 1
+
+                    ' === Copy and paste tracker data (with formatting) ===
+                    rngCopy.Copy
+                    wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteAll
+                    wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteColumnWidths
+
+                    Debug.Print "Copied from " & trackerName & ": " & rngCopy.Address
+                Else
+                    MsgBox "Keyword 'Scheme Name' not found in tracker sheet: " & trackerName, vbExclamation
+                End If
+
+                ' === Optional: Delete tracker sheet after copy ===
+                wsTracker.Delete
             Else
-                lastRowMain = wsMain.Cells.Find("*", , , , xlByRows, xlPrevious).Row
+                MsgBox "Missing sheet: " & mainName & " or " & trackerName, vbExclamation
             End If
-            
-            ' Add 3 blank rows and label
-            pasteRow = lastRowMain + 3
-            wsMain.Cells(pasteRow, 1).Value = "Tracker (" & trackerName & ")"
-            wsMain.Cells(pasteRow, 1).Font.Bold = True
-            wsMain.Cells(pasteRow, 1).Interior.Color = RGB(192, 80, 77)
-            wsMain.Cells(pasteRow, 1).Font.Color = vbWhite
-            pasteRow = pasteRow + 1
-            
-            ' Copy used range from tracker
-            If Application.WorksheetFunction.CountA(wsTracker.Cells) > 0 Then
-                Set rngCopy = wsTracker.UsedRange
-                Debug.Print "Copying data from tracker: " & trackerName
-                rngCopy.Copy
-                
-                ' Paste full content with formatting
-                wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteAll
-                wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteColumnWidths
-            Else
-                MsgBox "Tracker sheet " & trackerName & " is empty.", vbInformation
-            End If
-            
         End If
-        
-NextMapping:
-        Set wsMain = Nothing
-        Set wsTracker = Nothing
-        Debug.Print "-----------------------------------------"
     Next i
 
-CleanExit:
     Application.CutCopyMode = False
+    Application.DisplayAlerts = True
     Application.ScreenUpdating = True
-    MsgBox "Macro completed! Check Immediate Window for debug log (Ctrl + G).", vbInformation
-    Exit Sub
 
-ErrHandler:
-    MsgBox "Error: " & Err.Description & vbCrLf & "At Main: " & mainName & " | Tracker: " & trackerName, vbCritical
-    Resume CleanExit
+    MsgBox "All tracker sheets merged successfully!", vbInformation
 End Sub
