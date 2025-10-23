@@ -1,26 +1,62 @@
-' Import required namespace
-Imports System.Windows.Forms
+Option Explicit
 
-' Arguments for UiPath (optional, to pass resolution to workflow)
-' Define these in UiPath: screenWidth (Integer), screenHeight (Integer)
-' In Invoke Code activity, map these as arguments
+Sub CopySchemeDataToSummary()
+    Dim wb As Workbook
+    Dim wsSummary As Worksheet
+    Dim ws As Worksheet
+    Dim schemeName As String
+    Dim lastRowSummary As Long
+    Dim foundCell As Range
+    Dim pasteRow As Long
+    Dim copied As Boolean
+    
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.DisplayAlerts = False
+    
+    Set wb = ThisWorkbook
+    Set wsSummary = wb.Sheets("Summary")
+    
+    ' Find last scheme row in Summary (starting from A7)
+    lastRowSummary = wsSummary.Cells(wsSummary.Rows.Count, "A").End(xlUp).Row
+    
+    ' Loop through each scheme name in Summary
+    Dim i As Long
+    For i = 7 To lastRowSummary
+        schemeName = Trim(wsSummary.Cells(i, "A").Value)
+        copied = False
+        
+        If schemeName <> "" Then
+            ' Loop through each sheet
+            For Each ws In wb.Worksheets
+                ' Skip Summary itself
+                If ws.Name <> wsSummary.Name Then
+                    ' Process only sheets containing "Dir" or "Direct"
+                    If InStr(1, LCase(ws.Name), "dir") > 0 Or InStr(1, LCase(ws.Name), "direct") > 0 Then
+                        
+                        ' Find exact match in Column A
+                        Set foundCell = ws.Columns("A").Find(What:=schemeName, LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=True)
+                        
+                        If Not foundCell Is Nothing Then
+                            ' Copy entire row with formatting
+                            foundCell.EntireRow.Copy
+                            wsSummary.Cells(i, "A").PasteSpecial xlPasteAll
+                            wsSummary.Cells(i, "A").PasteSpecial xlPasteColumnWidths
+                            copied = True
+                            Exit For ' stop searching once found
+                        End If
+                    End If
+                End If
+            Next ws
+        End If
+        
+        ' If not copied, leave blank (nothing to do)
+    Next i
 
-Try
-    ' Get primary screen
-    Dim screen As Screen = Screen.PrimaryScreen
-    If screen IsNot Nothing Then
-        ' Get resolution
-        Dim width As Integer = screen.Bounds.Width
-        Dim height As Integer = screen.Bounds.Height
-        ' Assign to UiPath variables (optional)
-        screenWidth = width
-        screenHeight = height
-        ' Log resolution
-        Console.WriteLine("Resolution: " & width & "x" & height)
-    Else
-        Console.WriteLine("Error: No primary screen detected.")
-    End If
-Catch ex As Exception
-    ' Log any errors
-    Console.WriteLine("Error retrieving resolution: " & ex.Message)
-End Try
+    Application.CutCopyMode = False
+    Application.DisplayAlerts = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+    
+    MsgBox "Data copied to Summary successfully!", vbInformation
+End Sub
