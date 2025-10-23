@@ -1,44 +1,155 @@
-Sub ExportScreenshotsAsPDFs(RankSummary As String, QuartSummary As String, Summary As String)
-    ' Define the variables
-    Dim wsArray As Variant
-    Dim rngArray As Variant
-    Dim tempSheet As Worksheet
-    Dim rng As Range
+Option Explicit
+
+Sub RefreshAndProcess_Summary()
+    Dim wb As Workbook
+    Dim wsSummary As Worksheet
     Dim ws As Worksheet
-    Dim i As Integer
-    Dim filePath As String
+    Dim templatePath As String
+    Dim templateWB As Workbook
+    Dim schemeName As String
+    Dim foundCell As Range
+    Dim i As Long
+    Dim copied As Boolean
+    Dim lastRowSummary As Long
     
-    ' Array of sheet names and their respective ranges
-    wsArray = Array(RankSummary, QuartSummary, Summary)
-    rngArray = Array("B1:Y23", "L226:MS47", "D3:I19")
-    
-    Application.DisplayAlerts = False
     Application.ScreenUpdating = False
-    Application.Visible = True
-    Application.WindowState = xlMaximized
-    DoEvents
-
-    ' Loop through each sheet and export the range as PDF
-    For i = LBound(wsArray) To UBound(wsArray)
-        Set ws = ThisWorkbook.Sheets(wsArray(i))
-        Set rng = ws.Range(rngArray(i))
+    Application.DisplayAlerts = False
+    Application.Calculation = xlCalculationManual
+    
+    ' === Step 1: Replace Summary sheet with fresh copy from Template.xlsx ===
+    Set wb = ThisWorkbook
+    templatePath = wb.Path & "\Data\Template.xlsx"
+    
+    On Error Resume Next
+    Set wsSummary = wb.Sheets("Summary")
+    If Not wsSummary Is Nothing Then
+        wsSummary.Delete
+    End If
+    On Error GoTo 0
+    
+    ' Open Template workbook
+    Set templateWB = Workbooks.Open(templatePath, ReadOnly:=True)
+    
+    ' Copy Summary sheet to this workbook (as first sheet)
+    templateWB.Sheets("Summary").Copy Before:=wb.Sheets(1)
+    templateWB.Close SaveChanges:=False
+    
+    Set wsSummary = wb.Sheets("Summary")
+    
+    ' === Step 2: Copy matching rows into Summary ===
+    lastRowSummary = wsSummary.Cells(wsSummary.Rows.Count, "A").End(xlUp).Row
+    
+    For i = 7 To lastRowSummary ' data rows start below header row 6
+        schemeName = Trim(wsSummary.Cells(i, "A").Value)
+        copied = False
         
-        ' Copy the required range to a temporary sheet
-        Set tempSheet = Sheets.Add(After:=Sheets(Sheets.Count))
-        rng.Copy
-        tempSheet.Range("A1").PasteSpecial Paste:=xlPasteAll
-        Application.CutCopyMode = False
-        
-        ' Export the temp sheet to PDF
-        filePath = "D:\BotFiles\Gold ETF FOF\Mail Screenshots\" & wsArray(i) & ".pdf"
-        tempSheet.ExportAsFixedFormat Type:=xlTypePDF, Filename:=filePath, Quality:=xlQualityStandard, IncludeDocProperties:=True, IgnorePrintAreas:=False, OpenAfterPublish:=False
-
-        ' Delete the temporary sheet
-        Application.DisplayAlerts = False
-        tempSheet.Delete
+        If schemeName <> "" Then
+            For Each ws In wb.Worksheets
+                If ws.Name <> wsSummary.Name Then
+                    ' Include only sheets with "dir", "direct", or "additional"
+                    If InStr(1, LCase(ws.Name), "dir") > 0 _
+                       Or InStr(1, LCase(ws.Name), "direct") > 0 _
+                       Or InStr(1, LCase(ws.Name), "additional") > 0 Then
+                        
+                        Set foundCell = ws.Columns("A").Find(What:=schemeName, _
+                                                             LookIn:=xlValues, _
+                                                             LookAt:=xlWhole, _
+                                                             MatchCase:=True)
+                        If Not foundCell Is Nothing Then
+                            foundCell.EntireRow.Copy
+                            wsSummary.Cells(i, "A").PasteSpecial xlPasteAll
+                            wsSummary.Cells(i, "A").PasteSpecial xlPasteColumnWidths
+                            copied = True
+                            Exit For
+                        End If
+                    End If
+                End If
+            Next ws
+        End If
     Next i
-
+    
+    Application.CutCopyMode = False
+    
+    ' === Step 3: Clean Summary sheet ===
+    Call CleanUp_SummarySheet
+    
     Application.DisplayAlerts = True
+    Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
-    Application.Visible = True
+    
+    MsgBox "Summary sheet refreshed and processed successfully!", vbInformation
+End Sub
+
+
+' ======================================================================
+' Helper: Cleans Summary sheet (delete *Rank, move Corpus & NAV, clear format, format numbers)
+' ======================================================================
+Private Sub CleanUp_SummarySheet()
+    Dim ws As Worksheet
+    Dim lastCol As Long, lastRow As Long
+    Dim i As Long
+    Dim colName As String
+    Dim corpusCol As Long, navCol As Long
+    Dim rngClear As Range
+    
+    Set ws = ThisWorkbook.Sheets("Summary")
+    
+    ' Identify last column & row
+    lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    
+    ' === Delete ALL columns containing "rank" ===
+    For i = lastCol To 1 Step -1
+        colName = LCase(Trim(ws.Cells(6, i).Value))
+        If InStr(colName, "rank") > 0 Then
+            ws.Columns(i).Delete
+        End If
+    Next i
+    
+    ' Refresh lastCol
+    lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
+    
+    ' === Find "Corpus" and "NAV" columns ===
+    corpusCol = 0: navCol = 0
+    For i = 1 To lastCol
+        colName = LCase(Trim(ws.Cells(6, i).Value))
+        If InStr(colName, "corpus") > 0 Then corpusCol = i
+        If InStr(colName, "nav") > 0 Then navCol = i
+    Next i
+    
+    ' === Move Corpus → end ===
+    If corpusCol > 0 Then
+        ws.Columns(corpusCol).Cut
+        ws.Columns(lastCol + 1).Insert Shift:=xlToRight
+        lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
+    End If
+    
+    ' Re-locate NAV after Corpus move
+    navCol = 0
+    For i = 1 To lastCol
+        colName = LCase(Trim(ws.Cells(6, i).Value))
+        If InStr(colName, "nav") > 0 Then navCol = i
+    Next i
+    
+    ' === Move NAV → end ===
+    If navCol > 0 Then
+        ws.Columns(navCol).Cut
+        ws.Columns(lastCol + 1).Insert Shift:=xlToRight
+    End If
+    
+    ' === Clear bold & fill color from A6 → last cell ===
+    Set rngClear = ws.Range("A6", ws.Cells(lastRow, ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column))
+    With rngClear
+        .Font.Bold = False
+        .Interior.ColorIndex = xlNone
+    End With
+    
+    ' === Apply 2-decimal format to numeric columns (except Scheme, Corpus, NAV) ===
+    lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
+    For i = 1 To lastCol
+        colName = LCase(Trim(ws.Cells(6, i).Value))
+        If InStr(colName, "scheme") = 0 And InStr(colName, "nav") = 0 And InStr(colName, "corpus") = 0 Then
+            ws.Range(ws.Cells(7, i), ws.Cells(lastRow, i)).NumberFormat = "0.00"
+        End If
+    Next i
 End Sub
