@@ -1,14 +1,10 @@
 Option Explicit
 
 Sub CopySchemeDataToSummary_AndClean()
-    Dim wb As Workbook
-    Dim wsSummary As Worksheet
-    Dim ws As Worksheet
-    Dim schemeName As String
-    Dim lastRowSummary As Long
+    Dim wb As Workbook, wsSummary As Worksheet, ws As Worksheet
+    Dim schemeName As String, lastRowSummary As Long
     Dim foundCell As Range
-    Dim i As Long
-    Dim copied As Boolean
+    Dim i As Long, copied As Boolean
     
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
@@ -17,31 +13,31 @@ Sub CopySchemeDataToSummary_AndClean()
     Set wb = ThisWorkbook
     Set wsSummary = wb.Sheets("Summary")
     
-    ' === Step 1: Copy matching rows into Summary ===
+    ' === Step 1 – Copy matching rows into Summary ===
     lastRowSummary = wsSummary.Cells(wsSummary.Rows.Count, "A").End(xlUp).Row
     
-    For i = 7 To lastRowSummary
+    For i = 7 To lastRowSummary          ' data starts below header row 6
         schemeName = Trim(wsSummary.Cells(i, "A").Value)
         copied = False
         
         If schemeName <> "" Then
-            ' Loop through each sheet
             For Each ws In wb.Worksheets
                 If ws.Name <> wsSummary.Name Then
-                    ' ✅ Include sheets with "dir", "direct", or "additional" in their names
+                    ' search in sheets containing "dir", "direct", or "additional"
                     If InStr(1, LCase(ws.Name), "dir") > 0 _
                        Or InStr(1, LCase(ws.Name), "direct") > 0 _
                        Or InStr(1, LCase(ws.Name), "additional") > 0 Then
-                       
-                        ' Find exact match in Column A (case-sensitive)
-                        Set foundCell = ws.Columns("A").Find(What:=schemeName, LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=True)
                         
+                        Set foundCell = ws.Columns("A").Find(What:=schemeName, _
+                                                             LookIn:=xlValues, _
+                                                             LookAt:=xlWhole, _
+                                                             MatchCase:=True)
                         If Not foundCell Is Nothing Then
                             foundCell.EntireRow.Copy
                             wsSummary.Cells(i, "A").PasteSpecial xlPasteAll
                             wsSummary.Cells(i, "A").PasteSpecial xlPasteColumnWidths
                             copied = True
-                            Exit For ' stop searching once found
+                            Exit For
                         End If
                     End If
                 End If
@@ -50,8 +46,8 @@ Sub CopySchemeDataToSummary_AndClean()
     Next i
     
     Application.CutCopyMode = False
-
-    ' === Step 2: Clean the Summary sheet ===
+    
+    ' === Step 2 – Clean Summary Sheet ===
     Call CleanUp_SummarySheet
     
     Application.DisplayAlerts = True
@@ -61,8 +57,9 @@ Sub CopySchemeDataToSummary_AndClean()
     MsgBox "Data copied and Summary cleaned successfully!", vbInformation
 End Sub
 
+
 ' ======================================================================
-' Helper Sub: Cleans Summary Sheet (deletes Rank, moves Corpus & Nav, clears formatting)
+' Helper Sub: Clean Summary (delete *Rank, move Corpus & NAV, clear format)
 ' ======================================================================
 Private Sub CleanUp_SummarySheet()
     Dim ws As Worksheet
@@ -74,58 +71,54 @@ Private Sub CleanUp_SummarySheet()
     
     Set ws = ThisWorkbook.Sheets("Summary")
     
-    ' === Identify last column and row ===
-    lastCol = ws.Cells(7, ws.Columns.Count).End(xlToLeft).Column
+    ' === Identify last column & row ===
+    lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
     
-    ' === Find and delete the "Rank" column ===
+    ' === Delete column containing "rank" (text anywhere) ===
     rankCol = 0
     For i = 1 To lastCol
-        colName = Trim(LCase(ws.Cells(7, i).Value))
-        If colName = "rank" Then
+        colName = LCase(Trim(ws.Cells(6, i).Value))
+        If InStr(colName, "rank") > 0 Then
             rankCol = i
             Exit For
         End If
     Next i
+    If rankCol > 0 Then ws.Columns(rankCol).Delete
     
-    If rankCol > 0 Then
-        ws.Columns(rankCol).Delete
-    End If
+    ' Re-evaluate last column
+    lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
     
-    ' Recalculate last column after deletion
-    lastCol = ws.Cells(7, ws.Columns.Count).End(xlToLeft).Column
-    
-    ' === Find "Corpus" and "Nav" columns ===
-    corpusCol = 0
-    navCol = 0
+    ' === Find "Corpus" and "NAV" ===
+    corpusCol = 0: navCol = 0
     For i = 1 To lastCol
-        colName = Trim(LCase(ws.Cells(7, i).Value))
-        If colName = "corpus" Then corpusCol = i
-        If colName = "nav" Then navCol = i
+        colName = LCase(Trim(ws.Cells(6, i).Value))
+        If InStr(colName, "corpus") > 0 Then corpusCol = i
+        If InStr(colName, "nav") > 0 Then navCol = i
     Next i
     
-    ' === Move "Corpus" to the end ===
+    ' === Move Corpus → end ===
     If corpusCol > 0 Then
         ws.Columns(corpusCol).Cut
         ws.Columns(lastCol + 1).Insert Shift:=xlToRight
-        lastCol = ws.Cells(7, ws.Columns.Count).End(xlToLeft).Column
+        lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
     End If
     
-    ' Re-locate "Nav" after Corpus move
+    ' Re-locate Nav after Corpus move
     navCol = 0
     For i = 1 To lastCol
-        colName = Trim(LCase(ws.Cells(7, i).Value))
-        If colName = "nav" Then navCol = i
+        colName = LCase(Trim(ws.Cells(6, i).Value))
+        If InStr(colName, "nav") > 0 Then navCol = i
     Next i
     
-    ' === Move "Nav" to the end ===
+    ' === Move NAV → end ===
     If navCol > 0 Then
         ws.Columns(navCol).Cut
         ws.Columns(lastCol + 1).Insert Shift:=xlToRight
     End If
     
-    ' === Clear bold & fill color from A7 to last used cell ===
-    Set rngClear = ws.Range("A7", ws.Cells(lastRow, ws.Cells(7, ws.Columns.Count).End(xlToLeft).Column))
+    ' === Clear bold + fill color from A6 to end ===
+    Set rngClear = ws.Range("A6", ws.Cells(lastRow, ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column))
     With rngClear
         .Font.Bold = False
         .Interior.ColorIndex = xlNone
