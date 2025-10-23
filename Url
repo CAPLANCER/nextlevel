@@ -23,15 +23,13 @@ Sub CopySchemeDataToSummary_AndClean()
         If schemeName <> "" Then
             For Each ws In wb.Worksheets
                 If ws.Name <> wsSummary.Name Then
-                    ' search in sheets containing "dir", "direct", or "additional"
+                    ' ✅ Include sheets with "dir", "direct", or "additional"
                     If InStr(1, LCase(ws.Name), "dir") > 0 _
                        Or InStr(1, LCase(ws.Name), "direct") > 0 _
                        Or InStr(1, LCase(ws.Name), "additional") > 0 Then
                         
-                        Set foundCell = ws.Columns("A").Find(What:=schemeName, _
-                                                             LookIn:=xlValues, _
-                                                             LookAt:=xlWhole, _
-                                                             MatchCase:=True)
+                        Set foundCell = ws.Columns("A").Find(What:=schemeName, LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=True)
+                        
                         If Not foundCell Is Nothing Then
                             foundCell.EntireRow.Copy
                             wsSummary.Cells(i, "A").PasteSpecial xlPasteAll
@@ -59,37 +57,34 @@ End Sub
 
 
 ' ======================================================================
-' Helper Sub: Clean Summary (delete *Rank, move Corpus & NAV, clear format)
+' Helper Sub: Clean Summary (delete *Rank, move Corpus & NAV, clear format, apply number format)
 ' ======================================================================
 Private Sub CleanUp_SummarySheet()
     Dim ws As Worksheet
     Dim lastCol As Long, lastRow As Long
-    Dim rankCol As Long, corpusCol As Long, navCol As Long
-    Dim colName As String
     Dim i As Long
+    Dim colName As String
+    Dim corpusCol As Long, navCol As Long
     Dim rngClear As Range
     
     Set ws = ThisWorkbook.Sheets("Summary")
     
-    ' === Identify last column & row ===
+    ' === Identify last column and row ===
     lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
     
-    ' === Delete column containing "rank" (text anywhere) ===
-    rankCol = 0
-    For i = 1 To lastCol
+    ' === Delete ALL columns containing "rank" (text anywhere) ===
+    For i = lastCol To 1 Step -1
         colName = LCase(Trim(ws.Cells(6, i).Value))
         If InStr(colName, "rank") > 0 Then
-            rankCol = i
-            Exit For
+            ws.Columns(i).Delete
         End If
     Next i
-    If rankCol > 0 Then ws.Columns(rankCol).Delete
     
     ' Re-evaluate last column
     lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
     
-    ' === Find "Corpus" and "NAV" ===
+    ' === Find "Corpus" and "NAV" columns ===
     corpusCol = 0: navCol = 0
     For i = 1 To lastCol
         colName = LCase(Trim(ws.Cells(6, i).Value))
@@ -104,7 +99,7 @@ Private Sub CleanUp_SummarySheet()
         lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
     End If
     
-    ' Re-locate Nav after Corpus move
+    ' Re-locate NAV after Corpus move
     navCol = 0
     For i = 1 To lastCol
         colName = LCase(Trim(ws.Cells(6, i).Value))
@@ -117,10 +112,19 @@ Private Sub CleanUp_SummarySheet()
         ws.Columns(lastCol + 1).Insert Shift:=xlToRight
     End If
     
-    ' === Clear bold + fill color from A6 to end ===
+    ' === Clear bold & fill color from A6 to end ===
     Set rngClear = ws.Range("A6", ws.Cells(lastRow, ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column))
     With rngClear
         .Font.Bold = False
         .Interior.ColorIndex = xlNone
     End With
+    
+    ' === Apply number format (2 decimals) to numeric columns except Scheme/Corpus/NAV ===
+    lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
+    For i = 1 To lastCol
+        colName = LCase(Trim(ws.Cells(6, i).Value))
+        If InStr(colName, "scheme") = 0 And InStr(colName, "nav") = 0 And InStr(colName, "corpus") = 0 Then
+            ws.Range(ws.Cells(7, i), ws.Cells(lastRow, i)).NumberFormat = "0.00"
+        End If
+    Next i
 End Sub
