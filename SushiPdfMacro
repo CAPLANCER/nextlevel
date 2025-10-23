@@ -1,155 +1,105 @@
 Option Explicit
 
-Sub RefreshAndProcess_Summary()
+' === UiPath-ready Macro ===
+' DataTable input format:
+'   Column 1 → Main Sheet
+'   Column 2 → Tracker Sheet
+'
+' For each mapping:
+'   - Finds "Scheme Name" in tracker
+'   - Copies from one row above keyword to last used row (with formatting)
+'   - Pastes into main sheet below a "Tracker" label
+'   - Deletes tracker sheet after copy
+
+Public Sub MergeTrackers_FromUiPath(dtMapping As Variant)
     Dim wb As Workbook
-    Dim wsSummary As Worksheet
-    Dim ws As Worksheet
-    Dim templatePath As String
-    Dim templateWB As Workbook
-    Dim schemeName As String
-    Dim foundCell As Range
-    Dim i As Long
-    Dim copied As Boolean
-    Dim lastRowSummary As Long
+    Dim wsMain As Worksheet, wsTracker As Worksheet
+    Dim mainName As String, trackerName As String
+    Dim foundCell As Range, rngCopy As Range
+    Dim startRow As Long, endRow As Long, lastCol As Long
+    Dim pasteRow As Long, lastRowMain As Long
+    Dim row As Object ' for iterating DataTable rows
+
+    On Error GoTo ErrHandler
     
+    Set wb = ThisWorkbook
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
     Application.Calculation = xlCalculationManual
-    
-    ' === Step 1: Replace Summary sheet with fresh copy from Template.xlsx ===
-    Set wb = ThisWorkbook
-    templatePath = wb.Path & "\Data\Template.xlsx"
-    
-    On Error Resume Next
-    Set wsSummary = wb.Sheets("Summary")
-    If Not wsSummary Is Nothing Then
-        wsSummary.Delete
-    End If
-    On Error GoTo 0
-    
-    ' Open Template workbook
-    Set templateWB = Workbooks.Open(templatePath, ReadOnly:=True)
-    
-    ' Copy Summary sheet to this workbook (as first sheet)
-    templateWB.Sheets("Summary").Copy Before:=wb.Sheets(1)
-    templateWB.Close SaveChanges:=False
-    
-    Set wsSummary = wb.Sheets("Summary")
-    
-    ' === Step 2: Copy matching rows into Summary ===
-    lastRowSummary = wsSummary.Cells(wsSummary.Rows.Count, "A").End(xlUp).Row
-    
-    For i = 7 To lastRowSummary ' data rows start below header row 6
-        schemeName = Trim(wsSummary.Cells(i, "A").Value)
-        copied = False
-        
-        If schemeName <> "" Then
-            For Each ws In wb.Worksheets
-                If ws.Name <> wsSummary.Name Then
-                    ' Include only sheets with "dir", "direct", or "additional"
-                    If InStr(1, LCase(ws.Name), "dir") > 0 _
-                       Or InStr(1, LCase(ws.Name), "direct") > 0 _
-                       Or InStr(1, LCase(ws.Name), "additional") > 0 Then
-                        
-                        Set foundCell = ws.Columns("A").Find(What:=schemeName, _
-                                                             LookIn:=xlValues, _
-                                                             LookAt:=xlWhole, _
-                                                             MatchCase:=True)
-                        If Not foundCell Is Nothing Then
-                            foundCell.EntireRow.Copy
-                            wsSummary.Cells(i, "A").PasteSpecial xlPasteAll
-                            wsSummary.Cells(i, "A").PasteSpecial xlPasteColumnWidths
-                            copied = True
-                            Exit For
-                        End If
-                    End If
-                End If
-            Next ws
+
+    ' === Loop through UiPath DataTable rows ===
+    For Each row In dtMapping.Rows
+        mainName = Trim(CStr(row.Item(0)))    ' Column 1 = Main Sheet
+        trackerName = Trim(CStr(row.Item(1))) ' Column 2 = Tracker Sheet
+
+        If mainName <> "" And trackerName <> "" Then
+            On Error Resume Next
+            Set wsMain = wb.Sheets(mainName)
+            Set wsTracker = wb.Sheets(trackerName)
+            On Error GoTo 0
+
+            ' === Validate sheets ===
+            If wsMain Is Nothing Or wsTracker Is Nothing Then
+                MsgBox "Missing sheet: " & mainName & " or " & trackerName, vbExclamation
+                GoTo NextPair
+            End If
+
+            ' === Find "Scheme Name" in tracker ===
+            Set foundCell = wsTracker.Cells.Find(What:="Scheme Name", LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
+            If foundCell Is Nothing Then
+                MsgBox "'Scheme Name' not found in tracker: " & trackerName, vbExclamation
+                GoTo NextPair
+            End If
+
+            ' === Determine range to copy ===
+            startRow = Application.Max(1, foundCell.Row - 1)
+            endRow = wsTracker.Cells.Find("*", , , , xlByRows, xlPrevious).Row
+            lastCol = wsTracker.Cells.Find("*", , , , xlByColumns, xlPrevious).Column
+            Set rngCopy = wsTracker.Range(wsTracker.Cells(startRow, 1), wsTracker.Cells(endRow, lastCol))
+
+            ' === Find paste position in main sheet ===
+            If Application.WorksheetFunction.CountA(wsMain.Cells) = 0 Then
+                lastRowMain = 1
+            Else
+                lastRowMain = wsMain.Cells.Find("*", , , , xlByRows, xlPrevious).Row
+            End If
+            pasteRow = lastRowMain + 3
+
+            ' === Add label row ===
+            With wsMain.Cells(pasteRow, 1)
+                .Value = "Tracker (" & trackerName & ")"
+                .Font.Bold = True
+                .Font.Color = RGB(255, 255, 255)
+                .Interior.Color = RGB(192, 80, 77) ' Orange Accent 2, Darker 25%
+            End With
+            pasteRow = pasteRow + 1
+
+            ' === Copy data with formatting ===
+            rngCopy.Copy
+            wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteAll
+            wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteColumnWidths
+
+            ' === Delete tracker sheet ===
+            wsTracker.Delete
         End If
-    Next i
-    
+
+NextPair:
+        ' Reset objects for next loop
+        Set wsMain = Nothing
+        Set wsTracker = Nothing
+        Set foundCell = Nothing
+        Set rngCopy = Nothing
+    Next row
+
+CleanExit:
     Application.CutCopyMode = False
-    
-    ' === Step 3: Clean Summary sheet ===
-    Call CleanUp_SummarySheet
-    
     Application.DisplayAlerts = True
     Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
-    
-    MsgBox "Summary sheet refreshed and processed successfully!", vbInformation
-End Sub
+    MsgBox "All trackers merged successfully!", vbInformation
+    Exit Sub
 
-
-' ======================================================================
-' Helper: Cleans Summary sheet (delete *Rank, move Corpus & NAV, clear format, format numbers)
-' ======================================================================
-Private Sub CleanUp_SummarySheet()
-    Dim ws As Worksheet
-    Dim lastCol As Long, lastRow As Long
-    Dim i As Long
-    Dim colName As String
-    Dim corpusCol As Long, navCol As Long
-    Dim rngClear As Range
-    
-    Set ws = ThisWorkbook.Sheets("Summary")
-    
-    ' Identify last column & row
-    lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
-    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-    
-    ' === Delete ALL columns containing "rank" ===
-    For i = lastCol To 1 Step -1
-        colName = LCase(Trim(ws.Cells(6, i).Value))
-        If InStr(colName, "rank") > 0 Then
-            ws.Columns(i).Delete
-        End If
-    Next i
-    
-    ' Refresh lastCol
-    lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
-    
-    ' === Find "Corpus" and "NAV" columns ===
-    corpusCol = 0: navCol = 0
-    For i = 1 To lastCol
-        colName = LCase(Trim(ws.Cells(6, i).Value))
-        If InStr(colName, "corpus") > 0 Then corpusCol = i
-        If InStr(colName, "nav") > 0 Then navCol = i
-    Next i
-    
-    ' === Move Corpus → end ===
-    If corpusCol > 0 Then
-        ws.Columns(corpusCol).Cut
-        ws.Columns(lastCol + 1).Insert Shift:=xlToRight
-        lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
-    End If
-    
-    ' Re-locate NAV after Corpus move
-    navCol = 0
-    For i = 1 To lastCol
-        colName = LCase(Trim(ws.Cells(6, i).Value))
-        If InStr(colName, "nav") > 0 Then navCol = i
-    Next i
-    
-    ' === Move NAV → end ===
-    If navCol > 0 Then
-        ws.Columns(navCol).Cut
-        ws.Columns(lastCol + 1).Insert Shift:=xlToRight
-    End If
-    
-    ' === Clear bold & fill color from A6 → last cell ===
-    Set rngClear = ws.Range("A6", ws.Cells(lastRow, ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column))
-    With rngClear
-        .Font.Bold = False
-        .Interior.ColorIndex = xlNone
-    End With
-    
-    ' === Apply 2-decimal format to numeric columns (except Scheme, Corpus, NAV) ===
-    lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
-    For i = 1 To lastCol
-        colName = LCase(Trim(ws.Cells(6, i).Value))
-        If InStr(colName, "scheme") = 0 And InStr(colName, "nav") = 0 And InStr(colName, "corpus") = 0 Then
-            ws.Range(ws.Cells(7, i), ws.Cells(lastRow, i)).NumberFormat = "0.00"
-        End If
-    Next i
+ErrHandler:
+    MsgBox "Error in MergeTrackers_FromUiPath: " & Err.Description, vbCritical
+    Resume CleanExit
 End Sub
