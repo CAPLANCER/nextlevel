@@ -1,21 +1,35 @@
-Private Sub ReorderSheets(wb As Workbook, sheetOrderList As String)
+Option Explicit
+
+Sub ReorderSheets_Simple(sheetOrderList As String)
+    Dim wb As Workbook
     Dim sheetNames() As String
     Dim sheetName As String
-    Dim positionIndex As Long
     Dim ws As Worksheet
+    Dim pos As Long
     
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    
+    Set wb = ThisWorkbook
     sheetNames = Split(sheetOrderList, ",")
-    positionIndex = 1
+    pos = 1
     
+    ' Loop through each name and reorder if found
     For Each sheetName In sheetNames
         sheetName = Trim(sheetName)
         On Error Resume Next
         Set ws = wb.Sheets(sheetName)
         On Error GoTo 0
+        
         If Not ws Is Nothing Then
-            ws.Move Before:=wb.Sheets(positionIndex)
-            positionIndex = positionIndex + 1
+            ws.Move Before:=wb.Sheets(pos)
+            pos = pos + 1
         End If
         Set ws = Nothing
     Next sheetName
+    
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+    
+    MsgBox "Sheets rearranged successfully!", vbInformation
 End Sub
