@@ -1,74 +1,21 @@
-Sub HighlightAndDelete_Simple()
+Private Sub ReorderSheets(wb As Workbook, sheetOrderList As String)
+    Dim sheetNames() As String
+    Dim sheetName As String
+    Dim positionIndex As Long
     Dim ws As Worksheet
-    Dim r As Long, lastRow As Long, lastCol As Long
-    Dim txt As String, delRow As Long
-    Dim cell As Range
-    Dim isAdditional As Boolean
-
-    Application.ScreenUpdating = False
-    Application.Calculation = xlCalculationManual
-
-    For Each ws In ThisWorkbook.Worksheets
-        If Application.WorksheetFunction.CountA(ws.Cells) = 0 Then GoTo NextSheet
-        
-        isAdditional = (LCase(ws.Name) = "additional")
-        
-        lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-        delRow = 0
-        
-        For r = 1 To lastRow
-            Set cell = ws.Cells(r, "A")
-            If cell.MergeCells Then Set cell = cell.MergeArea.Cells(1)
-            
-            txt = LCase(Trim(cell.Value))
-            If txt <> "" Then
-                
-                ' === 1. Highlight "Scheme" ===
-                If InStr(txt, "scheme") > 0 Then
-                    lastCol = ws.Cells(r, ws.Columns.Count).End(xlToLeft).Column
-                    
-                    ' Scheme row
-                    With ws.Range(ws.Cells(r, 1), ws.Cells(r, lastCol))
-                        .Interior.Color = RGB(192, 80, 77)   ' Orange Accent 2, Darker 25%
-                        .Font.Color = RGB(255, 255, 255)     ' White font
-                        .Font.Bold = True
-                    End With
-                    
-                    ' Row above (if exists)
-                    If r > 1 Then
-                        lastCol = ws.Cells(r - 1, ws.Columns.Count).End(xlToLeft).Column
-                        With ws.Range(ws.Cells(r - 1, 1), ws.Cells(r - 1, lastCol))
-                            .Interior.Color = RGB(192, 80, 77)
-                            .Font.Color = RGB(255, 255, 255)
-                            .Font.Bold = True
-                        End With
-                    End If
-                End If
-                
-                ' === 2. Highlight "ICICI Prudential" (Skip if Additional) ===
-                If Not isAdditional Then
-                    If InStr(txt, "icici prudential") > 0 Then
-                        lastCol = ws.Cells(r, ws.Columns.Count).End(xlToLeft).Column
-                        With ws.Range(ws.Cells(r, 1), ws.Cells(r, lastCol))
-                            .Interior.Color = RGB(244, 177, 131)  ' Orange Accent 2, Lighter 40%
-                            .Font.Color = RGB(255, 255, 255)       ' White font
-                            .Font.Bold = True
-                        End With
-                    End If
-                End If
-                
-                ' === 3. Find "Less than" row to delete ===
-                If delRow = 0 And InStr(txt, "less than") > 0 Then delRow = r
-            End If
-        Next r
-        
-        ' === 4. Delete from "Less than" downward ===
-        If delRow > 0 Then ws.Rows(delRow & ":" & ws.Rows.Count).Delete
-
-NextSheet:
-    Next ws
-
-    Application.Calculation = xlCalculationAutomatic
-    Application.ScreenUpdating = True
-    MsgBox "All sheets processed successfully (ICICI skipped in 'Additional')!", vbInformation
+    
+    sheetNames = Split(sheetOrderList, ",")
+    positionIndex = 1
+    
+    For Each sheetName In sheetNames
+        sheetName = Trim(sheetName)
+        On Error Resume Next
+        Set ws = wb.Sheets(sheetName)
+        On Error GoTo 0
+        If Not ws Is Nothing Then
+            ws.Move Before:=wb.Sheets(positionIndex)
+            positionIndex = positionIndex + 1
+        End If
+        Set ws = Nothing
+    Next sheetName
 End Sub
