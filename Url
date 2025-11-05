@@ -7,19 +7,19 @@ Sub ShowCurrentProcess()
     Dim processName As String
     Dim processTime As Date
     Dim foundProcess As Boolean
-
-    Set ws = ThisWorkbook.Sheets("Sheet1") ' 🔁 Change this to your actual sheet name
+    
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' 🔁 Change sheet name if needed
     lastRow = ws.Cells(ws.Rows.Count, "C").End(xlUp).Row
     
     currentTime = Time
     foundProcess = False
     
-    ' Loop through each process
+    ' Loop through all trigger times in column C
     For r = 2 To lastRow  ' assuming headers in row 1
         If IsDate(ws.Cells(r, "C").Value) Then
             processTime = TimeValue(ws.Cells(r, "C").Value)
             
-            ' Check if current time >= process start time
+            ' If process time <= current time, store its name
             If currentTime >= processTime Then
                 processName = ws.Cells(r, "A").Value
                 foundProcess = True
@@ -28,8 +28,11 @@ Sub ShowCurrentProcess()
     Next r
     
     If foundProcess Then
-        MsgBox "⏰ Current running process: " & vbCrLf & vbCrLf & processName, vbInformation, "Process Tracker"
+        MsgBox "⏰ Current running process:" & vbCrLf & _
+               processName & vbCrLf & _
+               "(Triggered at " & Format(processTime, "h:mm AM/PM") & ")", _
+               vbInformation, "Process Tracker"
     Else
-        MsgBox "No process has started yet for today.", vbExclamation, "Process Tracker"
+        MsgBox "No process has started yet.", vbExclamation, "Process Tracker"
     End If
 End Sub
