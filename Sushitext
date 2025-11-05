@@ -1,15 +1,12 @@
-Option Explicit
-Private closeTime As Date
-
-Private Sub UserForm_Initialize()
-    Me.StartUpPosition = 0
-    Me.Left = Application.Left + Application.Width - Me.Width - 50
-    Me.Top = Application.Top + Application.Height - Me.Height - 100
-    Me.BackColor = RGB(255, 255, 200)
-    Me.Label1.BackColor = Me.BackColor
-    Me.Label1.ForeColor = RGB(0, 0, 0)
-
-    ' Schedule auto-close via helper macro in Module
-    closeTime = Now + TimeValue("00:00:03")
-    Application.OnTime closeTime, "'" & ThisWorkbook.Name & "'!CloseToastForm"
+Public Sub ShowToast(message As String)
+    Dim frm As Object
+    On Error Resume Next
+    Set frm = VBA.UserForms.Add("ToastForm")
+    If frm Is Nothing Then
+        MsgBox message, vbInformation, "Process Alert"
+        Exit Sub
+    End If
+    frm.Label1.Caption = message
+    frm.Show vbModeless
+    DoEvents
 End Sub
