@@ -1,19 +1,15 @@
-Sub ConvertTriggerTimes()
-    Dim ws As Worksheet
-    Dim r As Long, lastRow As Long
-    Dim txt As String
-    
-    Set ws = ThisWorkbook.Sheets("NOVEMBER25")
-    lastRow = ws.Cells(ws.Rows.Count, "C").End(xlUp).Row
-    
-    For r = 2 To lastRow  ' assuming header in row 1
-        txt = Trim(CStr(ws.Cells(r, "C").Value))
-        txt = Replace(txt, Chr(160), " ") ' remove hidden NBSP
-        If Len(txt) > 0 And IsDate(txt) Then
-            ws.Cells(r, "C").Value = CDate(txt)
-        End If
-    Next r
-    
-    ws.Columns("C").NumberFormat = "h:mm AM/PM"
-    MsgBox "All trigger times are now converted to real Excel time values.", vbInformation
+Option Explicit
+Private closeTime As Date
+
+Private Sub UserForm_Initialize()
+    Me.StartUpPosition = 0
+    Me.Left = Application.Left + Application.Width - Me.Width - 50
+    Me.Top = Application.Top + Application.Height - Me.Height - 100
+    Me.BackColor = RGB(255, 255, 200)
+    Me.Label1.BackColor = Me.BackColor
+    Me.Label1.ForeColor = RGB(0, 0, 0)
+
+    ' Schedule auto-close via helper macro in Module
+    closeTime = Now + TimeValue("00:00:03")
+    Application.OnTime closeTime, "'" & ThisWorkbook.Name & "'!CloseToastForm"
 End Sub
