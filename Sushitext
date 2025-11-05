@@ -1,82 +1,19 @@
-Option Explicit
-
-Sub HighlightAndDelete_Simple()
-    Dim ws As Worksheet, r As Long, lastRow As Long, lastCol As Long
-    Dim txt As String, delRow As Long
-    Dim cell As Range
+Sub ConvertTriggerTimes()
+    Dim ws As Worksheet
+    Dim r As Long, lastRow As Long
+    Dim txt As String
     
-    Application.ScreenUpdating = False
-    Application.EnableEvents = False
-    Application.Calculation = xlCalculationManual
-
-    For Each ws In ThisWorkbook.Worksheets
-        ' Skip empty sheets
-        If Application.WorksheetFunction.CountA(ws.Cells) = 0 Then GoTo NextSheet
-        
-        ' === Step 1: Clear all fill colors ===
-        ws.Cells.Interior.ColorIndex = xlNone
-        
-        ' === Step 2: Initialize variables ===
-        lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-        delRow = 0
-        
-        ' === Step 2.1: Concatenate B&C → B, and D&E → D ===
-        For r = 1 To lastRow
-            ' --- B & C merge ---
-            If ws.Cells(r, "B").Value <> "" And ws.Cells(r, "C").Value <> "" Then
-                If IsDate(ws.Cells(r, "C").Value) Then
-                    ws.Cells(r, "B").Value = ws.Cells(r, "B").Value & " (" & _
-                        Format(ws.Cells(r, "C").Value, ws.Cells(r, "C").NumberFormat) & ")"
-                Else
-                    ws.Cells(r, "B").Value = ws.Cells(r, "B").Value & " (" & ws.Cells(r, "C").Value & ")"
-                End If
-            End If
-
-            ' --- D & E merge ---
-            If ws.Cells(r, "D").Value <> "" And ws.Cells(r, "E").Value <> "" Then
-                If IsDate(ws.Cells(r, "E").Value) Then
-                    ws.Cells(r, "D").Value = ws.Cells(r, "D").Value & " (" & _
-                        Format(ws.Cells(r, "E").Value, ws.Cells(r, "E").NumberFormat) & ")"
-                Else
-                    ws.Cells(r, "D").Value = ws.Cells(r, "D").Value & " (" & ws.Cells(r, "E").Value & ")"
-                End If
-            End If
-        Next r
-        
-        ' === Step 3: Loop through each row in Column A ===
-        For r = 1 To lastRow
-            Set cell = ws.Cells(r, "A")
-            If cell.MergeCells Then Set cell = cell.MergeArea.Cells(1)
-            
-            txt = LCase(Trim(cell.Value))
-            If txt <> "" Then
-                
-                ' 1. Color "scheme" rows
-                If InStr(txt, "scheme") > 0 Then
-                    lastCol = ws.Cells(r, ws.Columns.Count).End(xlToLeft).Column
-                    ws.Range(ws.Cells(r, 1), ws.Cells(r, lastCol)).Interior.Color = RGB(192, 80, 77)
-                End If
-                
-                ' 2. Color "ICICI prudential" rows
-                If InStr(txt, "icici prudential") > 0 Then
-                    lastCol = ws.Cells(r, ws.Columns.Count).End(xlToLeft).Column
-                    ws.Range(ws.Cells(r, 1), ws.Cells(r, lastCol)).Interior.Color = RGB(244, 177, 131)
-                End If
-                
-                ' 3. Find "less than" row to delete later
-                If delRow = 0 And InStr(txt, "less than") > 0 Then delRow = r
-            End If
-        Next r
-        
-        ' === Step 4: Delete from "Less than" and below ===
-        If delRow > 0 Then ws.Rows(delRow & ":" & ws.Rows.Count).Delete
-        
-NextSheet:
-    Next ws
-
-    Application.Calculation = xlCalculationAutomatic
-    Application.EnableEvents = True
-    Application.ScreenUpdating = True
-
-    MsgBox "All sheets processed successfully!", vbInformation
+    Set ws = ThisWorkbook.Sheets("NOVEMBER25")
+    lastRow = ws.Cells(ws.Rows.Count, "C").End(xlUp).Row
+    
+    For r = 2 To lastRow  ' assuming header in row 1
+        txt = Trim(CStr(ws.Cells(r, "C").Value))
+        txt = Replace(txt, Chr(160), " ") ' remove hidden NBSP
+        If Len(txt) > 0 And IsDate(txt) Then
+            ws.Cells(r, "C").Value = CDate(txt)
+        End If
+    Next r
+    
+    ws.Columns("C").NumberFormat = "h:mm AM/PM"
+    MsgBox "All trigger times are now converted to real Excel time values.", vbInformation
 End Sub
