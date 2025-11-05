@@ -1,105 +1,17 @@
-Option Explicit
-
-' === UiPath-ready Macro ===
-' DataTable input format:
-'   Column 1 → Main Sheet
-'   Column 2 → Tracker Sheet
-'
-' For each mapping:
-'   - Finds "Scheme Name" in tracker
-'   - Copies from one row above keyword to last used row (with formatting)
-'   - Pastes into main sheet below a "Tracker" label
-'   - Deletes tracker sheet after copy
-
-Public Sub MergeTrackers_FromUiPath(dtMapping As Variant)
-    Dim wb As Workbook
-    Dim wsMain As Worksheet, wsTracker As Worksheet
-    Dim mainName As String, trackerName As String
-    Dim foundCell As Range, rngCopy As Range
-    Dim startRow As Long, endRow As Long, lastCol As Long
-    Dim pasteRow As Long, lastRowMain As Long
-    Dim row As Object ' for iterating DataTable rows
-
-    On Error GoTo ErrHandler
-    
-    Set wb = ThisWorkbook
-    Application.ScreenUpdating = False
-    Application.DisplayAlerts = False
-    Application.Calculation = xlCalculationManual
-
-    ' === Loop through UiPath DataTable rows ===
-    For Each row In dtMapping.Rows
-        mainName = Trim(CStr(row.Item(0)))    ' Column 1 = Main Sheet
-        trackerName = Trim(CStr(row.Item(1))) ' Column 2 = Tracker Sheet
-
-        If mainName <> "" And trackerName <> "" Then
-            On Error Resume Next
-            Set wsMain = wb.Sheets(mainName)
-            Set wsTracker = wb.Sheets(trackerName)
-            On Error GoTo 0
-
-            ' === Validate sheets ===
-            If wsMain Is Nothing Or wsTracker Is Nothing Then
-                MsgBox "Missing sheet: " & mainName & " or " & trackerName, vbExclamation
-                GoTo NextPair
-            End If
-
-            ' === Find "Scheme Name" in tracker ===
-            Set foundCell = wsTracker.Cells.Find(What:="Scheme Name", LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
-            If foundCell Is Nothing Then
-                MsgBox "'Scheme Name' not found in tracker: " & trackerName, vbExclamation
-                GoTo NextPair
-            End If
-
-            ' === Determine range to copy ===
-            startRow = Application.Max(1, foundCell.Row - 1)
-            endRow = wsTracker.Cells.Find("*", , , , xlByRows, xlPrevious).Row
-            lastCol = wsTracker.Cells.Find("*", , , , xlByColumns, xlPrevious).Column
-            Set rngCopy = wsTracker.Range(wsTracker.Cells(startRow, 1), wsTracker.Cells(endRow, lastCol))
-
-            ' === Find paste position in main sheet ===
-            If Application.WorksheetFunction.CountA(wsMain.Cells) = 0 Then
-                lastRowMain = 1
-            Else
-                lastRowMain = wsMain.Cells.Find("*", , , , xlByRows, xlPrevious).Row
-            End If
-            pasteRow = lastRowMain + 3
-
-            ' === Add label row ===
-            With wsMain.Cells(pasteRow, 1)
-                .Value = "Tracker (" & trackerName & ")"
-                .Font.Bold = True
-                .Font.Color = RGB(255, 255, 255)
-                .Interior.Color = RGB(192, 80, 77) ' Orange Accent 2, Darker 25%
-            End With
-            pasteRow = pasteRow + 1
-
-            ' === Copy data with formatting ===
-            rngCopy.Copy
-            wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteAll
-            wsMain.Cells(pasteRow, 1).PasteSpecial xlPasteColumnWidths
-
-            ' === Delete tracker sheet ===
-            wsTracker.Delete
+Sub Debug_ShowTypes()
+    Dim ws As Worksheet, r As Long, lr As Long
+    Set ws = ThisWorkbook.Sheets("NOVEMBER25")
+    lr = ws.Cells(ws.Rows.Count, "C").End(xlUp).Row
+    Debug.Print "Row", "Value", "TypeName", "Len", "LastCharCode"
+    For r = 2 To lr
+        Dim v As Variant, s As String, code As Long
+        v = ws.Cells(r, "C").Value
+        s = CStr(v)
+        If Len(s) = 0 Then
+            code = 0
+        Else
+            code = Asc(Mid(s, Len(s), 1))
         End If
-
-NextPair:
-        ' Reset objects for next loop
-        Set wsMain = Nothing
-        Set wsTracker = Nothing
-        Set foundCell = Nothing
-        Set rngCopy = Nothing
-    Next row
-
-CleanExit:
-    Application.CutCopyMode = False
-    Application.DisplayAlerts = True
-    Application.Calculation = xlCalculationAutomatic
-    Application.ScreenUpdating = True
-    MsgBox "All trackers merged successfully!", vbInformation
-    Exit Sub
-
-ErrHandler:
-    MsgBox "Error in MergeTrackers_FromUiPath: " & Err.Description, vbCritical
-    Resume CleanExit
+        Debug.Print r, "[" & s & "]", TypeName(v), Len(s), code
+    Next r
 End Sub
