@@ -1,130 +1,35 @@
 Option Explicit
 
-Sub CopySchemeDataToSummary_AndClean()
-    Dim wb As Workbook, wsSummary As Worksheet, ws As Worksheet
-    Dim schemeName As String, lastRowSummary As Long
-    Dim foundCell As Range
-    Dim i As Long, copied As Boolean
-    
-    Application.ScreenUpdating = False
-    Application.Calculation = xlCalculationManual
-    Application.DisplayAlerts = False
-    
-    Set wb = ThisWorkbook
-    Set wsSummary = wb.Sheets("Summary")
-    
-    ' === Step 1 – Copy matching rows into Summary ===
-    lastRowSummary = wsSummary.Cells(wsSummary.Rows.Count, "A").End(xlUp).Row
-    
-    For i = 7 To lastRowSummary          ' data starts below header row 6
-        schemeName = Trim(wsSummary.Cells(i, "A").Value)
-        copied = False
-        
-        If schemeName <> "" Then
-            For Each ws In wb.Worksheets
-                If ws.Name <> wsSummary.Name Then
-                    ' ✅ Include sheets with "dir", "direct", or "additional"
-                    If InStr(1, LCase(ws.Name), "dir") > 0 _
-                       Or InStr(1, LCase(ws.Name), "direct") > 0 _
-                       Or InStr(1, LCase(ws.Name), "additional") > 0 Then
-                        
-                        Set foundCell = ws.Columns("A").Find(What:=schemeName, LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=True)
-                        
-                        If Not foundCell Is Nothing Then
-                            foundCell.EntireRow.Copy
-                            wsSummary.Cells(i, "A").PasteSpecial xlPasteAll
-                            wsSummary.Cells(i, "A").PasteSpecial xlPasteColumnWidths
-                            copied = True
-                            Exit For
-                        End If
-                    End If
-                End If
-            Next ws
-        End If
-    Next i
-    
-    Application.CutCopyMode = False
-    
-    ' === Step 2 – Clean Summary Sheet ===
-    Call CleanUp_SummarySheet
-    
-    Application.DisplayAlerts = True
-    Application.Calculation = xlCalculationAutomatic
-    Application.ScreenUpdating = True
-    
-    MsgBox "Data copied and Summary cleaned successfully!", vbInformation
-End Sub
-
-
-' ======================================================================
-' Helper Sub: Clean Summary (delete *Rank, move Corpus & NAV, clear format, apply number format)
-' ======================================================================
-Private Sub CleanUp_SummarySheet()
+Sub ShowCurrentProcess()
     Dim ws As Worksheet
-    Dim lastCol As Long, lastRow As Long
-    Dim i As Long
-    Dim colName As String
-    Dim corpusCol As Long, navCol As Long
-    Dim rngClear As Range
+    Dim lastRow As Long, r As Long
+    Dim currentTime As Date
+    Dim processName As String
+    Dim processTime As Date
+    Dim foundProcess As Boolean
+
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' 🔁 Change this to your actual sheet name
+    lastRow = ws.Cells(ws.Rows.Count, "C").End(xlUp).Row
     
-    Set ws = ThisWorkbook.Sheets("Summary")
+    currentTime = Time
+    foundProcess = False
     
-    ' === Identify last column and row ===
-    lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
-    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-    
-    ' === Delete ALL columns containing "rank" (text anywhere) ===
-    For i = lastCol To 1 Step -1
-        colName = LCase(Trim(ws.Cells(6, i).Value))
-        If InStr(colName, "rank") > 0 Then
-            ws.Columns(i).Delete
+    ' Loop through each process
+    For r = 2 To lastRow  ' assuming headers in row 1
+        If IsDate(ws.Cells(r, "C").Value) Then
+            processTime = TimeValue(ws.Cells(r, "C").Value)
+            
+            ' Check if current time >= process start time
+            If currentTime >= processTime Then
+                processName = ws.Cells(r, "A").Value
+                foundProcess = True
+            End If
         End If
-    Next i
+    Next r
     
-    ' Re-evaluate last column
-    lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
-    
-    ' === Find "Corpus" and "NAV" columns ===
-    corpusCol = 0: navCol = 0
-    For i = 1 To lastCol
-        colName = LCase(Trim(ws.Cells(6, i).Value))
-        If InStr(colName, "corpus") > 0 Then corpusCol = i
-        If InStr(colName, "nav") > 0 Then navCol = i
-    Next i
-    
-    ' === Move Corpus → end ===
-    If corpusCol > 0 Then
-        ws.Columns(corpusCol).Cut
-        ws.Columns(lastCol + 1).Insert Shift:=xlToRight
-        lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
+    If foundProcess Then
+        MsgBox "⏰ Current running process: " & vbCrLf & vbCrLf & processName, vbInformation, "Process Tracker"
+    Else
+        MsgBox "No process has started yet for today.", vbExclamation, "Process Tracker"
     End If
-    
-    ' Re-locate NAV after Corpus move
-    navCol = 0
-    For i = 1 To lastCol
-        colName = LCase(Trim(ws.Cells(6, i).Value))
-        If InStr(colName, "nav") > 0 Then navCol = i
-    Next i
-    
-    ' === Move NAV → end ===
-    If navCol > 0 Then
-        ws.Columns(navCol).Cut
-        ws.Columns(lastCol + 1).Insert Shift:=xlToRight
-    End If
-    
-    ' === Clear bold & fill color from A6 to end ===
-    Set rngClear = ws.Range("A6", ws.Cells(lastRow, ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column))
-    With rngClear
-        .Font.Bold = False
-        .Interior.ColorIndex = xlNone
-    End With
-    
-    ' === Apply number format (2 decimals) to numeric columns except Scheme/Corpus/NAV ===
-    lastCol = ws.Cells(6, ws.Columns.Count).End(xlToLeft).Column
-    For i = 1 To lastCol
-        colName = LCase(Trim(ws.Cells(6, i).Value))
-        If InStr(colName, "scheme") = 0 And InStr(colName, "nav") = 0 And InStr(colName, "corpus") = 0 Then
-            ws.Range(ws.Cells(7, i), ws.Cells(lastRow, i)).NumberFormat = "0.00"
-        End If
-    Next i
 End Sub
