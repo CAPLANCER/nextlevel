@@ -1,273 +1,61 @@
-<!DOCTYPE html>
+Option Explicit
 
-<html>  
-<head>  
-<title>Number Of Times In Top 3 Ranks</title>  
-<style>  
-    table {  
-      border-collapse: collapse;  
-      margin: 10px;  
-      float: left;  
-      font-size: 12px;  
-    }  
-    th, td {  
-      border: 1px solid #a52a2a;  
-      padding: 6px 10px;  
-      text-align: center;  
-      white-space: nowrap;  
-    }  
-    th {  
-      background-color: #fff;  
-      color: #a52a2a;  
-    }  
-    .highlight {  
-      background-color: #fdd9c0;  
-    }  
-    caption {  
-      font-weight: bold;  
-      margin-bottom: 5px;  
-      color: #a52a2a;  
-    }  
-    h2, h3, strong {  
-      color: #a52a2a;  
-    }  
-    .section {  
-      clear: both;  
-      margin-top: 40px;  
-    }  
-    .may-date {  
-      font-weight: bold;  
-      display: block;  
-      margin-bottom: 5px;  
-      color: #a52a2a;  
-      text-align: left;  
-    }  
-    .ipru-row {  
-      background-color: #fdd9c0;  
-    }  
-</style>  
-</head>  
-<body>    <div class="section">  
-    <h2>Number Of Times In Top 3 Ranks - Gold ETF</h2>  
-    <div class="may-date">May-25</div>  
-    <table>  
-      <thead>  
-        <tr>  
-          <th rowspan="2">FH Name</th>  
-          <th colspan="3">1 Month</th>  
-          <th colspan="3">3 Month</th>  
-          <th colspan="3">6 Month</th>  
-          <th colspan="3">1 Year</th>  
-          <th rowspan="2">Total</th>  
-        </tr>  
-        <tr>  
-          <th>Rank 1</th>  
-          <th>Rank 2</th>  
-          <th>Rank 3</th>  
-          <th>Rank 1</th>  
-          <th>Rank 2</th>  
-          <th>Rank 3</th>  
-          <th>Rank 1</th>  
-          <th>Rank 2</th>  
-          <th>Rank 3</th>  
-          <th>Rank 1</th>  
-          <th>Rank 2</th>  
-          <th>Rank 3</th>  
-        </tr>  
-      </thead>  
-      <tbody>  
-        <tr>  
-          <td>HDFC</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-        </tr>  
-        <tr class="ipru-row">  
-          <td>I Pru</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-        </tr>  
-        <tr>  
-          <td>Kotak</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>1</td>  
-        </tr>  
-        <tr>  
-          <td>Nippon</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-        </tr>  
-        <tr>  
-          <td>SBI</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-          <td>1</td>  
-        </tr>  
-      </tbody>  
-    </table>  
-  </div>    <div class="section">  
-    <h2>Number Of Times In Top 3 Ranks - Gold FOF</h2>  
-    <div class="may-date">May-25</div>  
-    <table>  
-      <thead>  
-        <tr>  
-          <th rowspan="2">FH Name</th>  
-          <th colspan="3">1 Month</th>  
-          <th colspan="3">3 Month</th>  
-          <th colspan="3">6 Month</th>  
-          <th colspan="3">1 Year</th>  
-          <th rowspan="2">Total</th>  
-        </tr>  
-        <tr>  
-          <th>Rank 1</th>  
-          <th>Rank 2</th>  
-          <th>Rank 3</th>  
-          <th>Rank 1</th>  
-          <th>Rank 2</th>  
-          <th>Rank 3</th>  
-          <th>Rank 1</th>  
-          <th>Rank 2</th>  
-          <th>Rank 3</th>  
-          <th>Rank 1</th>  
-          <th>Rank 2</th>  
-          <th>Rank 3</th>  
-        </tr>  
-      </thead>  
-      <tbody>  
-        <tr>  
-          <td>HDFC</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-        </tr>  
-        <tr class="ipru-row">  
-          <td>I Pru</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-        </tr>  
-        <tr>  
-          <td>Kotak</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>1</td>  
-        </tr>  
-        <tr>  
-          <td>Nippon</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-        </tr>  
-        <tr>  
-          <td>SBI</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-          <td>-</td>  
-          <td>1</td>  
-          <td>1</td>  
-          <td>1</td>  
-        </tr>  
-      </tbody>  
-    </table>  
-  </div>  </body>  
-</html>  
+Public Function RunTransExtract() As String
+    On Error GoTo ErrHandler
+
+    Application.ScreenUpdating = False
+
+    '=== Validate sheet ===
+    If WorksheetExists("Trans extract") = False Then
+        RunTransExtract = "Error: Sheet 'Trans extract' not found"
+        Exit Function
+    End If
+
+    With Sheets("Trans extract")
+        .Range("A7:AZ100000").ClearContents
+
+        '=== Safe try QAAMacro.Logon ===
+        On Error Resume Next
+        QAAMacro.Logon
+        If Err.Number <> 0 Then
+            RunTransExtract = "Error: QAAMacro Add-in Missing"
+            Err.Clear
+            GoTo Cleanup
+        End If
+        On Error GoTo ErrHandler
+
+        QAAMacro.RecalculateRange "B6"
+
+        .Rows("1:1").EntireRow.Hidden = True
+
+        ' Autofit range
+        .Columns("C:AT").EntireColumn.AutoFit
+    End With
+
+    ' Wait until Excel finished calculating
+    Call WaitForCalc
+
+    RunTransExtract = "Success"
+    GoTo Cleanup
+
+ErrHandler:
+    RunTransExtract = "Error: " & Err.Description
+
+Cleanup:
+    Application.ScreenUpdating = True
+End Function
+
+
+'=== helper to wait ===
+Private Sub WaitForCalc()
+    Do While Application.CalculationState <> xlDone
+        DoEvents
+    Loop
+End Sub
+
+'=== helper to check sheet ===
+Private Function WorksheetExists(sName As String) As Boolean
+    On Error Resume Next
+    WorksheetExists = Not Sheets(sName) Is Nothing
+    On Error GoTo 0
+End Function
