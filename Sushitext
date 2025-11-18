@@ -1,8 +1,27 @@
-Private Sub Workbook_Open()
-    StartProcessMonitor
-End Sub
+Public Sub BlinkRows()
+    Dim ws As Worksheet
+    Dim r As Variant
+    Static toggle As Boolean
 
-Private Sub Workbook_BeforeClose(Cancel As Boolean)
+    ' === SAFETY GUARDS ===
+    If blinkingRows Is Nothing Then Exit Sub          ' Not initialized
+    If blinkingRows.Count = 0 Then Exit Sub           ' Nothing to blink
     On Error Resume Next
-    Application.OnTime nextCheckTime, "CheckRunningProcess", , False
+    Set ws = ThisWorkbook.Sheets("NOVEMBER25")
+    If ws Is Nothing Then Exit Sub                    ' Sheet missing
+    On Error GoTo 0
+    ' ======================
+
+    toggle = Not toggle
+
+    For Each r In blinkingRows.Keys
+        If toggle Then
+            ws.Rows(CLng(r)).Interior.Color = RGB(255, 255, 0)   ' Blink ON
+        Else
+            ws.Rows(CLng(r)).Interior.ColorIndex = xlNone        ' Blink OFF
+        End If
+    Next r
+
+    ' keep blinking
+    Application.OnTime Now + blinkInterval, "BlinkRows"
 End Sub
