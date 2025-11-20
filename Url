@@ -1,22 +1,5 @@
-You are a data extraction assistant. Analyze the attached phone bill PDF.
-    
-    Your goal is to extract ONLY the 'Call Logs' or 'Voice Calls'.
-    
-    Strict Instructions:
-    1. IGNORE 'SMS', 'Data Usage', 'Roaming Data', or 'VAS' sections.
-    2. Look for tabular data that typically contains: Date, Time, Number/Destination, Duration, and Cost/Amount.
-    3. The bill format may vary (e.g., Jio, Airtel, Vodafone), so visually identify the Voice/Call section.
-    4. Return the data in a strict JSON format with the following structure:
-       {
-         "operator_detected": "Name of operator (e.g., Jio, Airtel)",
-         "bill_period": "Date range if found",
-         "calls": [
-           {
-             "date": "DD-MM-YYYY",
-             "time": "HH:MM:SS",
-             "number": "Phone number called",
-             "duration": "Duration of call",
-             "amount": "Cost of call"
-           }
-         ]
-       }
+Analyze the attached mobile bill document. Your specific goal is to extract ONLY the Call Records/ Voice usage logs.\n\nCRITICAL INSTRUCTIONS:\n1. IGNORE all sections related to 'SMS', 'Data Usage', 'Mobile Internet', 'Roaming Data', or 'VAS'.\n2. The layout varies by operator (e.g., Jio, Airtel, Vodafone/ Vi). Visually identify the table specifically used for Voice Calls.\n3. Extract the row data for every call found.\n\nOUTPUT FORMAT:\nReturn the data in strict JSON format with the following structure:\n{\n \"detected_operator\": \"String (e.g., Jio, Airtel)\",\n \"bill_period\": \"String\",\n \"call_records\": [\n {\n \"date\": \"DD-MM-YYYY\",\n \"time\": \"HH:MM\", \n \"phone_number\": \"Destination Number\", \n \"duration\": \"Duration String\",\n \"cost\":
+
+\"Amount\"\n }\n ]\n}\n\nlf a specific field (like cost)
+
+is empty or zero, output it as '0.00' or null
