@@ -1,87 +1,22 @@
-Option Explicit
-
-Dim nextCheckTime As Date
-Dim shownProcesses As Collection
-
-' === Start the automatic monitor ===
-Public Sub StartProcessMonitor()
-    On Error Resume Next
-    Set shownProcesses = New Collection
-    CheckRunningProcess
-End Sub
-
-' === Stop the scheduled monitor ===
-Public Sub StopProcessMonitor()
-    On Error Resume Next
-    Application.OnTime earliesttime:=nextCheckTime, procedure:="CheckRunningProcess", schedule:=False
-End Sub
-
-' === Main routine to check and show process alerts ===
-Public Sub CheckRunningProcess()
-    Dim ws As Worksheet
-    Dim lastRow As Long, r As Long
-    Dim currentTime As Date, startTime As Date, endTime As Date
-    Dim processName As String, folderName As String
-    Dim key As String, msg As String
-    Dim rawVal As Variant, cleanVal As String
-
-    ' === Change sheet name here if different ===
-    Set ws = ThisWorkbook.Sheets("NOVEMBER25")
-    lastRow = ws.Cells(ws.Rows.Count, "C").End(xlUp).Row
-    currentTime = Time()
-
-    On Error Resume Next
-
-    ' === Loop through each process ===
-    For r = 2 To lastRow
-        rawVal = ws.Cells(r, "C").Value
-        cleanVal = Trim(Replace(CStr(rawVal), Chr(160), " "))
-
-        ' Handle both numeric and text time values
-        If Not IsEmpty(rawVal) Then
-            If VarType(rawVal) = vbDouble Or VarType(rawVal) = vbDate Or IsDate(cleanVal) Then
-                startTime = TimeValue(CDate(rawVal))
-                endTime = DateAdd("n", 10, startTime)
-
-                processName = Trim(ws.Cells(r, "A").Value)
-                folderName = Trim(ws.Cells(r, "B").Value)
-                key = processName & "_" & Format(startTime, "h:mm AM/PM")
-
-                ' === Check if within 10-min window ===
-                If currentTime >= startTime And currentTime < endTime Then
-                    If Not ExistsInCollection(shownProcesses, key) Then
-                        msg = "🟢 Process: " & processName & vbCrLf & _
-                              "📁 Folder: " & folderName & vbCrLf & _
-                              "⏰ Start Time: " & Format(startTime, "h:mm AM/PM")
-                        ShowToast msg
-                        shownProcesses.Add key, key
-                    End If
-                End If
-            End If
-        End If
-    Next r
-
-    ' === Schedule next check (every 2 min) ===
-    nextCheckTime = Now + TimeValue("00:02:00")
-    Application.OnTime earliesttime:=nextCheckTime, procedure:="CheckRunningProcess"
-End Sub
-
-' === Helper: Check if key exists in collection ===
-Private Function ExistsInCollection(col As Collection, key As String) As Boolean
-    On Error Resume Next
-    Dim tmp As Variant
-    tmp = col.Item(key)
-    ExistsInCollection = (Err.Number = 0)
-    Err.Clear
-End Function
-
-' === Simple toast popup (non-blocking) ===
-Public Sub ShowToast(message As String)
-    Dim frm As Object
-    Set frm = VBA.UserForms.Add("ToastForm")
-    frm.Label1.Caption = message
-    frm.Show vbModeless
-    DoEvents
-    Application.Wait (Now + TimeValue("00:00:03")) ' show for 3 seconds
-    Unload frm
-End Sub
+You are a data extraction assistant. Analyze the attached phone bill PDF.
+    
+    Your goal is to extract ONLY the 'Call Logs' or 'Voice Calls'.
+    
+    Strict Instructions:
+    1. IGNORE 'SMS', 'Data Usage', 'Roaming Data', or 'VAS' sections.
+    2. Look for tabular data that typically contains: Date, Time, Number/Destination, Duration, and Cost/Amount.
+    3. The bill format may vary (e.g., Jio, Airtel, Vodafone), so visually identify the Voice/Call section.
+    4. Return the data in a strict JSON format with the following structure:
+       {
+         "operator_detected": "Name of operator (e.g., Jio, Airtel)",
+         "bill_period": "Date range if found",
+         "calls": [
+           {
+             "date": "DD-MM-YYYY",
+             "time": "HH:MM:SS",
+             "number": "Phone number called",
+             "duration": "Duration of call",
+             "amount": "Cost of call"
+           }
+         ]
+       }
