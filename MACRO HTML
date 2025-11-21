@@ -1,9 +1,28 @@
-Public Function GetRowCount(sheetName As String) As Long
-    Dim ws As Worksheet
-    On Error GoTo SheetNotFound
-    Set ws = ThisWorkbook.Worksheets(sheetName)
-    GetRowCount = ws.UsedRange.Rows.Count
-    Exit Function
-SheetNotFound:
-    GetRowCount = -1 'error code for missing sheet
-End Function
+import google.generativeai as genai
+import json
+
+# 1. Configure
+genai.configure(api_key="YOUR_ACTUAL_API_KEY_HERE")
+
+# 2. Upload the file (The SDK handles the URI logic for you)
+print("Uploading...")
+sample_file = genai.upload_file(path="your_document.pdf", display_name="My PDF")
+
+# 3. Initialize Model and Generate
+print("Generating...")
+model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+
+# The SDK allows you to pass the file object directly alongside text
+response = model.generate_content([sample_file, "Analyze this document and summarize it."])
+
+# 4. Save the raw JSON result
+# response.result conversion might differ slightly, usually response.text is what you want
+result_dict = {
+    "text_response": response.text,
+    "raw_data": str(response) # Capturing the full object representation
+}
+
+with open('output_sdk.json', 'w') as f:
+    json.dump(result_dict, f, indent=4)
+
+print("Saved to output_sdk.json")
