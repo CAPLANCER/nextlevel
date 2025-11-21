@@ -3,6 +3,7 @@ import sys
 import os
 
 PDF_PATH = "your_document.pdf"
+OUTPUT_TEXT_FILE = "ExtractedText.txt"
 
 def extract_text(pdf_path):
     if not os.path.exists(pdf_path):
@@ -18,7 +19,7 @@ def extract_text(pdf_path):
     full_text = ""
     for i, page in enumerate(doc):
         try:
-            text = page.get_text("text")  # extract real text layer
+            text = page.get_text("text")
             print(f"\n--- PAGE {i+1} START ---\n")
             print(text)
             print(f"\n--- PAGE {i+1} END ---\n")
@@ -32,9 +33,15 @@ def extract_text(pdf_path):
 
 if __name__ == "__main__":
     print("[INFO] Extracting text from PDF...")
+
     extracted_text = extract_text(PDF_PATH)
 
-    print("\n==============================")
-    print(" FULL EXTRACTED TEXT BELOW")
-    print("==============================\n")
-    print(extracted_text) 
+    # Save to file
+    try:
+        with open(OUTPUT_TEXT_FILE, "w", encoding="utf-8") as f:
+            f.write(extracted_text)
+
+        print(f"\n[SUCCESS] Extracted text saved to: {OUTPUT_TEXT_FILE}")
+
+    except Exception as e:
+        print(f"[ERROR] Could not save file: {e}")
