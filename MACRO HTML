@@ -1,166 +1,173 @@
 import requests
 import json
 import sys
-import time  # <--- Added time module for the 10-second delay
+import time
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # ==========================================
-# USER CONFIGURATION (EDIT THESE 3 LINES)
+# USER CONFIGURATION
 # ==========================================
 API_KEY = "YOUR_ACTUAL_API_KEY_HERE"
-FILE_PATH = "your_document.pdf"   # Make sure this file is in the same folder or provide full path
-PROXY_URL = "http://10.10.1.10:3128" # Replace with your organization's proxy
+FILE_PATH = "your_document.pdf"
+PROXY_URL = "http://10.10.1.10:3128"
 
-# ==========================================
-# SYSTEM SETTINGS
-# ==========================================
 TIMEOUT_SECONDS = 60
 MODEL_NAME = "gemini-1.5-flash"
 
 # Retry Settings
 MAX_RETRIES = 5
-RETRY_DELAY = 10 # Seconds
+RETRY_DELAY = 10  # seconds
 
-# Proxy dictionary configuration
+# Session + Retry Adapter
+def get_retry_session():
+    session = requests.Session()
+
+    retry = Retry(
+        total=MAX_RETRIES,
+        backoff_factor=2,  # exponential backoff: 1, 2, 4, 8...
+        status_forcelist=[408, 429, 500, 502, 503, 504],
+        allowed_methods=["GET", "POST"]
+    )
+
+    adapter = HTTPAdapter(max_retries=retry)
+
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+
+    return session
+
+
+# Global session with retry
+session = get_retry_session()
+
+# Proxy dictionary
 proxies = {
     "http": PROXY_URL,
     "https": PROXY_URL,
 }
 
+# ==========================================
+# UPLOAD FILE WITH RETRIES
+# ==========================================
 def upload_file():
-    """
-    Step 1: Upload the file to Google's server to get a URI.
-    """
     url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
-    
-    print(f"[Step 1] Uploading file: {FILE_PATH}...")
-    
-    try:
-        # Open file in binary read mode
-        with open(FILE_PATH, 'rb') as f:
-            files = {'file': (FILE_PATH, f, 'application/pdf')}
-            
-            # Send POST request with Proxy
-            # (Uploads are usually fast, so we use standard request here)
-            response = requests.post(url, files=files, proxies=proxies, timeout=TIMEOUT_SECONDS)
-            
-        if response.status_code == 200:
-            response_json = response.json()
-            file_uri = response_json['file']['uri']
-            print(f" > Success! File URI: {file_uri}")
-            return file_uri
-        else:
-            print(f" > Error Uploading: {response.status_code}")
-            print(response.text)
-            sys.exit(1)
-            
-    except FileNotFoundError:
-        print(f" > Error: The file '{FILE_PATH}' was not found.")
-        sys.exit(1)
-    except requests.exceptions.RequestException as e:
-        print(f" > Network Error during upload: {e}")
-        sys.exit(1)
+    print(f"[Step 1] Uploading file with retry enabled: {FILE_PATH}")
 
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            with open(FILE_PATH, "rb") as f:
+                files = {"file": (FILE_PATH, f, "application/pdf")}
+
+                response = session.post(
+                    url,
+                    files=files,
+                    proxies=proxies,
+                    timeout=TIMEOUT_SECONDS
+                )
+
+            if response.status_code == 200:
+                file_uri = response.json()["file"]["uri"]
+                print(" > Upload success! File URI:", file_uri)
+                return file_uri
+
+            elif response.status_code >= 500:
+                print(f"   Server error {response.status_code}. Retrying...")
+
+            else:
+                print(f"   API error {response.status_code}: {response.text}")
+                return None
+
+        except requests.exceptions.RequestException as e:
+            print(f"   Network error: {e}")
+
+        if attempt < MAX_RETRIES:
+            print(f"   Waiting {RETRY_DELAY}s before retrying upload...")
+            time.sleep(RETRY_DELAY)
+        else:
+            print("   Upload failed after max retries.")
+            return None
+
+
+# ==========================================
+# GENERATE CONTENT WITH RETRIES
+# ==========================================
 def generate_content(file_uri):
-    """
-    Step 2: Send the prompt and file URI to the model.
-    Includes Retry Logic: 5 attempts, 10s delay.
-    """
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={API_KEY}"
-    
-    headers = {
-        'Content-Type': 'application/json'
-    }
-    
+
+    headers = {"Content-Type": "application/json"}
+
     payload = {
         "contents": [
             {
                 "role": "user",
                 "parts": [
-                    {
-                        "fileData": {
-                            "mimeType": "application/pdf",
-                            "fileUri": file_uri
-                        }
-                    },
-                    {
-                        "text": "Analyze this document and provide a summary."
-                    }
+                    {"fileData": {"mimeType": "application/pdf", "fileUri": file_uri}},
+                    {"text": "Analyze this document and provide a summary."}
                 ]
             }
         ]
     }
-    
-    print(f"[Step 2] Generating content (Timeout: {TIMEOUT_SECONDS}s, Max Retries: {MAX_RETRIES})...")
 
-    # --- RETRY LOGIC STARTS HERE ---
+    print(f"[Step 2] Sending request to model... (Retry enabled)")
+
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            print(f" > Attempt {attempt} of {MAX_RETRIES}...")
-            
-            # Send POST request with Proxy and Timeout
-            response = requests.post(
-                url, 
-                headers=headers, 
-                json=payload, 
-                proxies=proxies, 
+            print(f" > Attempt {attempt}/{MAX_RETRIES}")
+
+            response = session.post(
+                url,
+                headers=headers,
+                json=payload,
+                proxies=proxies,
                 timeout=TIMEOUT_SECONDS
             )
-            
-            # If successful (HTTP 200), return the data immediately
+
             if response.status_code == 200:
                 return response.json()
-            
-            # If Server Error (5xx), we should retry. If Client Error (4xx), we usually stop.
+
             elif response.status_code >= 500:
-                print(f"   x Server Error ({response.status_code}). Retrying...")
+                print(f"   Server error {response.status_code}. Retrying...")
+
             else:
-                # Critical error (like 403 Forbidden or 400 Bad Request) - do not retry
-                print(f"   x API Error: {response.status_code}")
-                print(response.text)
+                print(f"   API error {response.status_code}: {response.text}")
                 return None
 
         except requests.exceptions.Timeout:
-            print(f"   x Request timed out (> {TIMEOUT_SECONDS}s).")
+            print(f"   Timeout (> {TIMEOUT_SECONDS}s).")
         except requests.exceptions.RequestException as e:
-            print(f"   x Network Error: {e}")
+            print(f"   Network error: {e}")
 
-        # If we are not at the last attempt, wait and try again
         if attempt < MAX_RETRIES:
-            print(f"   Waiting {RETRY_DELAY} seconds before next attempt...")
+            print(f"   Waiting {RETRY_DELAY}s before retry...")
             time.sleep(RETRY_DELAY)
         else:
-            print("   x All attempts failed.")
+            print("   Model request failed after max retries.")
             return None
-    # --- RETRY LOGIC ENDS HERE ---
 
+
+# ==========================================
+# SAVE OUTPUT
+# ==========================================
 def save_output(data):
-    """
-    Step 3: Save the JSON response to a file.
-    """
     if data:
         filename = "response_output.json"
-        with open(filename, 'w', encoding='utf-8') as f:
+        with open(filename, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
-        print(f"[Step 3] Response saved to '{filename}'")
-        
-        # Optional: Print the actual text to console
+        print(f"[Step 3] Saved response to {filename}")
+
         try:
             print("\n--- AI Response ---")
-            print(data['candidates'][0]['content']['parts'][0]['text'])
-            print("-------------------")
+            print(data["candidates"][0]["content"]["parts"][0]["text"])
         except KeyError:
-            print("Could not extract text from JSON structure.")
+            print("Could not extract text.")
+
 
 # ==========================================
-# MAIN EXECUTION
+# MAIN
 # ==========================================
 if __name__ == "__main__":
-    # Run Step 1
     uri = upload_file()
-    
-    # Run Step 2
     if uri:
         result_json = generate_content(uri)
-        
-        # Run Step 3
         save_output(result_json)
