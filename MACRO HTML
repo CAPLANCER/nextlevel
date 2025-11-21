@@ -1,6 +1,7 @@
 import requests
 import json
 import sys
+import time  # <--- Added time module for the 10-second delay
 
 # ==========================================
 # USER CONFIGURATION (EDIT THESE 3 LINES)
@@ -14,6 +15,10 @@ PROXY_URL = "http://10.10.1.10:3128" # Replace with your organization's proxy
 # ==========================================
 TIMEOUT_SECONDS = 60
 MODEL_NAME = "gemini-1.5-flash"
+
+# Retry Settings
+MAX_RETRIES = 5
+RETRY_DELAY = 10 # Seconds
 
 # Proxy dictionary configuration
 proxies = {
@@ -35,6 +40,7 @@ def upload_file():
             files = {'file': (FILE_PATH, f, 'application/pdf')}
             
             # Send POST request with Proxy
+            # (Uploads are usually fast, so we use standard request here)
             response = requests.post(url, files=files, proxies=proxies, timeout=TIMEOUT_SECONDS)
             
         if response.status_code == 200:
@@ -57,6 +63,7 @@ def upload_file():
 def generate_content(file_uri):
     """
     Step 2: Send the prompt and file URI to the model.
+    Includes Retry Logic: 5 attempts, 10s delay.
     """
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={API_KEY}"
     
@@ -83,31 +90,48 @@ def generate_content(file_uri):
         ]
     }
     
-    print(f"[Step 2] Generating content (Timeout set to {TIMEOUT_SECONDS}s)...")
-    
-    try:
-        # Send POST request with Proxy and Timeout
-        response = requests.post(
-            url, 
-            headers=headers, 
-            json=payload, 
-            proxies=proxies, 
-            timeout=TIMEOUT_SECONDS
-        )
-        
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f" > API Error: {response.status_code}")
-            print(response.text)
-            return None
+    print(f"[Step 2] Generating content (Timeout: {TIMEOUT_SECONDS}s, Max Retries: {MAX_RETRIES})...")
 
-    except requests.exceptions.Timeout:
-        print(" > Error: Request timed out! The server took longer than 60 seconds.")
-        return None
-    except requests.exceptions.RequestException as e:
-        print(f" > Network Error during generation: {e}")
-        return None
+    # --- RETRY LOGIC STARTS HERE ---
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            print(f" > Attempt {attempt} of {MAX_RETRIES}...")
+            
+            # Send POST request with Proxy and Timeout
+            response = requests.post(
+                url, 
+                headers=headers, 
+                json=payload, 
+                proxies=proxies, 
+                timeout=TIMEOUT_SECONDS
+            )
+            
+            # If successful (HTTP 200), return the data immediately
+            if response.status_code == 200:
+                return response.json()
+            
+            # If Server Error (5xx), we should retry. If Client Error (4xx), we usually stop.
+            elif response.status_code >= 500:
+                print(f"   x Server Error ({response.status_code}). Retrying...")
+            else:
+                # Critical error (like 403 Forbidden or 400 Bad Request) - do not retry
+                print(f"   x API Error: {response.status_code}")
+                print(response.text)
+                return None
+
+        except requests.exceptions.Timeout:
+            print(f"   x Request timed out (> {TIMEOUT_SECONDS}s).")
+        except requests.exceptions.RequestException as e:
+            print(f"   x Network Error: {e}")
+
+        # If we are not at the last attempt, wait and try again
+        if attempt < MAX_RETRIES:
+            print(f"   Waiting {RETRY_DELAY} seconds before next attempt...")
+            time.sleep(RETRY_DELAY)
+        else:
+            print("   x All attempts failed.")
+            return None
+    # --- RETRY LOGIC ENDS HERE ---
 
 def save_output(data):
     """
@@ -135,7 +159,8 @@ if __name__ == "__main__":
     uri = upload_file()
     
     # Run Step 2
-    result_json = generate_content(uri)
-    
-    # Run Step 3
-    save_output(result_json)
+    if uri:
+        result_json = generate_content(uri)
+        
+        # Run Step 3
+        save_output(result_json)
