@@ -1,28 +1,84 @@
-import google.generativeai as genai
+import requests
 import json
 
-# 1. Configure
-genai.configure(api_key="YOUR_ACTUAL_API_KEY_HERE")
+# --- CONFIGURATION ---
+API_KEY = "YOUR_ACTUAL_API_KEY_HERE"
+FILE_PATH = "your_document.pdf"  # Path to the file on your computer
+PROMPT_TEXT = "Analyze this document and summarize it."
 
-# 2. Upload the file (The SDK handles the URI logic for you)
-print("Uploading...")
-sample_file = genai.upload_file(path="your_document.pdf", display_name="My PDF")
+# --- STEP 1: UPLOAD THE FILE ---
+# Postman equivalent: POST to /upload/v1beta/files
+upload_url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
 
-# 3. Initialize Model and Generate
-print("Generating...")
-model = genai.GenerativeModel(model_name="gemini-1.5-flash")
-
-# The SDK allows you to pass the file object directly alongside text
-response = model.generate_content([sample_file, "Analyze this document and summarize it."])
-
-# 4. Save the raw JSON result
-# response.result conversion might differ slightly, usually response.text is what you want
-result_dict = {
-    "text_response": response.text,
-    "raw_data": str(response) # Capturing the full object representation
+# Opening the file in binary mode, similar to "Body > File" in Postman
+files = {
+    'file': (FILE_PATH, open(FILE_PATH, 'rb'), 'application/pdf')
 }
 
-with open('output_sdk.json', 'w') as f:
-    json.dump(result_dict, f, indent=4)
+# We send the request
+print("Uploading file...")
+response_1 = requests.post(upload_url, files=files)
 
-print("Saved to output_sdk.json")
+# Check if upload was successful
+if response_1.status_code != 200:
+    print(f"Upload failed: {response_1.text}")
+    exit()
+
+# Extract the URI from the JSON output
+# Postman equivalent: Copying the URI from the response body
+response_json = response_1.json()
+file_uri = response_json['file']['uri']
+print(f"File uploaded successfully. URI: {file_uri}")
+
+
+# --- STEP 2: GENERATE CONTENT ---
+# Postman equivalent: POST to /v1beta/models/...:generateContent
+# Note: Corrected 'gemini2-5' to 'gemini-1.5-flash' based on standard models
+generate_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+
+# Constructing the JSON Body
+# Postman equivalent: Body > Raw > JSON
+payload = {
+    "contents": [
+        {
+            "role": "user",
+            "parts": [
+                {
+                    "fileData": {
+                        "mimeType": "application/pdf",
+                        "fileUri": file_uri  # Using the variable we saved earlier
+                    }
+                },
+                {
+                    "text": PROMPT_TEXT
+                }
+            ]
+        }
+    ]
+}
+
+headers = {
+    'Content-Type': 'application/json'
+}
+
+print("Generating content...")
+response_2 = requests.post(generate_url, headers=headers, json=payload)
+
+# --- STEP 3: SAVE THE OUTPUT ---
+if response_2.status_code == 200:
+    output_data = response_2.json()
+    
+    # Saving to a file named 'output.json'
+    with open('output.json', 'w', encoding='utf-8') as f:
+        json.dump(output_data, f, indent=4)
+        
+    print("Success! Response saved to 'output.json'")
+    
+    # Optional: Print just the text answer to console
+    try:
+        print("\nAI Answer:")
+        print(output_data['candidates'][0]['content']['parts'][0]['text'])
+    except KeyError:
+        print("Could not parse text from response.")
+else:
+    print(f"Generation failed: {response_2.text}")
