@@ -1,54 +1,141 @@
 import requests
 import json
+import sys
 
-# --- CONFIGURATION ---
+# ==========================================
+# USER CONFIGURATION (EDIT THESE 3 LINES)
+# ==========================================
 API_KEY = "YOUR_ACTUAL_API_KEY_HERE"
-FILE_PATH = "your_document.pdf" 
+FILE_PATH = "your_document.pdf"   # Make sure this file is in the same folder or provide full path
+PROXY_URL = "http://10.10.1.10:3128" # Replace with your organization's proxy
 
-# --- PROXY CONFIGURATION ---
-# Replace with your specific proxy details. 
-# If you have a username/password, use: "http://user:password@proxyip:port"
+# ==========================================
+# SYSTEM SETTINGS
+# ==========================================
+TIMEOUT_SECONDS = 60
+MODEL_NAME = "gemini-1.5-flash"
+
+# Proxy dictionary configuration
 proxies = {
-    "http": "http://10.10.1.10:3128",  # Example IP and Port
-    "https": "http://10.10.1.10:3128",
+    "http": PROXY_URL,
+    "https": PROXY_URL,
 }
 
-# --- STEP 1: UPLOAD ---
-upload_url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
+def upload_file():
+    """
+    Step 1: Upload the file to Google's server to get a URI.
+    """
+    url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
+    
+    print(f"[Step 1] Uploading file: {FILE_PATH}...")
+    
+    try:
+        # Open file in binary read mode
+        with open(FILE_PATH, 'rb') as f:
+            files = {'file': (FILE_PATH, f, 'application/pdf')}
+            
+            # Send POST request with Proxy
+            response = requests.post(url, files=files, proxies=proxies, timeout=TIMEOUT_SECONDS)
+            
+        if response.status_code == 200:
+            response_json = response.json()
+            file_uri = response_json['file']['uri']
+            print(f" > Success! File URI: {file_uri}")
+            return file_uri
+        else:
+            print(f" > Error Uploading: {response.status_code}")
+            print(response.text)
+            sys.exit(1)
+            
+    except FileNotFoundError:
+        print(f" > Error: The file '{FILE_PATH}' was not found.")
+        sys.exit(1)
+    except requests.exceptions.RequestException as e:
+        print(f" > Network Error during upload: {e}")
+        sys.exit(1)
 
-files = {'file': (FILE_PATH, open(FILE_PATH, 'rb'), 'application/pdf')}
-
-print("Uploading file via proxy...")
-# Added proxies=proxies here
-response_1 = requests.post(upload_url, files=files, proxies=proxies)
-
-if response_1.status_code != 200:
-    print(f"Upload failed: {response_1.text}")
-    exit()
-
-file_uri = response_1.json()['file']['uri']
-print(f"File uploaded: {file_uri}")
-
-# --- STEP 2: GENERATE ---
-generate_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
-
-payload = {
-    "contents": [{
-        "role": "user",
-        "parts": [
-            {"fileData": {"mimeType": "application/pdf", "fileUri": file_uri}},
-            {"text": "Analyze this document."}
+def generate_content(file_uri):
+    """
+    Step 2: Send the prompt and file URI to the model.
+    """
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={API_KEY}"
+    
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "fileData": {
+                            "mimeType": "application/pdf",
+                            "fileUri": file_uri
+                        }
+                    },
+                    {
+                        "text": "Analyze this document and provide a summary."
+                    }
+                ]
+            }
         ]
-    }]
-}
+    }
+    
+    print(f"[Step 2] Generating content (Timeout set to {TIMEOUT_SECONDS}s)...")
+    
+    try:
+        # Send POST request with Proxy and Timeout
+        response = requests.post(
+            url, 
+            headers=headers, 
+            json=payload, 
+            proxies=proxies, 
+            timeout=TIMEOUT_SECONDS
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f" > API Error: {response.status_code}")
+            print(response.text)
+            return None
 
-headers = {'Content-Type': 'application/json'}
+    except requests.exceptions.Timeout:
+        print(" > Error: Request timed out! The server took longer than 60 seconds.")
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f" > Network Error during generation: {e}")
+        return None
 
-print("Generating content via proxy...")
-# Added proxies=proxies here
-response_2 = requests.post(generate_url, headers=headers, json=payload, proxies=proxies)
+def save_output(data):
+    """
+    Step 3: Save the JSON response to a file.
+    """
+    if data:
+        filename = "response_output.json"
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4)
+        print(f"[Step 3] Response saved to '{filename}'")
+        
+        # Optional: Print the actual text to console
+        try:
+            print("\n--- AI Response ---")
+            print(data['candidates'][0]['content']['parts'][0]['text'])
+            print("-------------------")
+        except KeyError:
+            print("Could not extract text from JSON structure.")
 
-if response_2.status_code == 200:
-    print(response_2.json())
-else:
-    print(f"Error: {response_2.text}")
+# ==========================================
+# MAIN EXECUTION
+# ==========================================
+if __name__ == "__main__":
+    # Run Step 1
+    uri = upload_file()
+    
+    # Run Step 2
+    result_json = generate_content(uri)
+    
+    # Run Step 3
+    save_output(result_json)
