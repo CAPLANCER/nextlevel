@@ -3,82 +3,52 @@ import json
 
 # --- CONFIGURATION ---
 API_KEY = "YOUR_ACTUAL_API_KEY_HERE"
-FILE_PATH = "your_document.pdf"  # Path to the file on your computer
-PROMPT_TEXT = "Analyze this document and summarize it."
+FILE_PATH = "your_document.pdf" 
 
-# --- STEP 1: UPLOAD THE FILE ---
-# Postman equivalent: POST to /upload/v1beta/files
-upload_url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
-
-# Opening the file in binary mode, similar to "Body > File" in Postman
-files = {
-    'file': (FILE_PATH, open(FILE_PATH, 'rb'), 'application/pdf')
+# --- PROXY CONFIGURATION ---
+# Replace with your specific proxy details. 
+# If you have a username/password, use: "http://user:password@proxyip:port"
+proxies = {
+    "http": "http://10.10.1.10:3128",  # Example IP and Port
+    "https": "http://10.10.1.10:3128",
 }
 
-# We send the request
-print("Uploading file...")
-response_1 = requests.post(upload_url, files=files)
+# --- STEP 1: UPLOAD ---
+upload_url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
 
-# Check if upload was successful
+files = {'file': (FILE_PATH, open(FILE_PATH, 'rb'), 'application/pdf')}
+
+print("Uploading file via proxy...")
+# Added proxies=proxies here
+response_1 = requests.post(upload_url, files=files, proxies=proxies)
+
 if response_1.status_code != 200:
     print(f"Upload failed: {response_1.text}")
     exit()
 
-# Extract the URI from the JSON output
-# Postman equivalent: Copying the URI from the response body
-response_json = response_1.json()
-file_uri = response_json['file']['uri']
-print(f"File uploaded successfully. URI: {file_uri}")
+file_uri = response_1.json()['file']['uri']
+print(f"File uploaded: {file_uri}")
 
-
-# --- STEP 2: GENERATE CONTENT ---
-# Postman equivalent: POST to /v1beta/models/...:generateContent
-# Note: Corrected 'gemini2-5' to 'gemini-1.5-flash' based on standard models
+# --- STEP 2: GENERATE ---
 generate_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
 
-# Constructing the JSON Body
-# Postman equivalent: Body > Raw > JSON
 payload = {
-    "contents": [
-        {
-            "role": "user",
-            "parts": [
-                {
-                    "fileData": {
-                        "mimeType": "application/pdf",
-                        "fileUri": file_uri  # Using the variable we saved earlier
-                    }
-                },
-                {
-                    "text": PROMPT_TEXT
-                }
-            ]
-        }
-    ]
+    "contents": [{
+        "role": "user",
+        "parts": [
+            {"fileData": {"mimeType": "application/pdf", "fileUri": file_uri}},
+            {"text": "Analyze this document."}
+        ]
+    }]
 }
 
-headers = {
-    'Content-Type': 'application/json'
-}
+headers = {'Content-Type': 'application/json'}
 
-print("Generating content...")
-response_2 = requests.post(generate_url, headers=headers, json=payload)
+print("Generating content via proxy...")
+# Added proxies=proxies here
+response_2 = requests.post(generate_url, headers=headers, json=payload, proxies=proxies)
 
-# --- STEP 3: SAVE THE OUTPUT ---
 if response_2.status_code == 200:
-    output_data = response_2.json()
-    
-    # Saving to a file named 'output.json'
-    with open('output.json', 'w', encoding='utf-8') as f:
-        json.dump(output_data, f, indent=4)
-        
-    print("Success! Response saved to 'output.json'")
-    
-    # Optional: Print just the text answer to console
-    try:
-        print("\nAI Answer:")
-        print(output_data['candidates'][0]['content']['parts'][0]['text'])
-    except KeyError:
-        print("Could not parse text from response.")
+    print(response_2.json())
 else:
-    print(f"Generation failed: {response_2.text}")
+    print(f"Error: {response_2.text}")
