@@ -1,61 +1,105 @@
-Option Explicit
+import re
+import pdfplumber
 
-Public Function RunTransExtract() As String
-    On Error GoTo ErrHandler
+PDF_PATH = "YourFile.pdf"
+OUTPUT_PATH = "Call_Records.txt"
 
-    Application.ScreenUpdating = False
+# ==========================
+# ✅ KEYWORDS
+# ==========================
 
-    '=== Validate sheet ===
-    If WorksheetExists("Trans extract") = False Then
-        RunTransExtract = "Error: Sheet 'Trans extract' not found"
-        Exit Function
-    End If
+UNIVERSAL_CALL_KEYWORDS = [
+    "CALL",
+    "CALLS",
+    "VOICE CALL",
+    "LOCAL CALLS",
+    "OUTGOING CALLS",
+    "INCOMING CALLS",
+    "ITEMISED CALLS",
+    "ITEMIZED CALLS",
+    "S.no Date Time Number Duration",
+    "Date Time Number Duration",
+    "Duration",
+    "HH:MM:SS"
+]
 
-    With Sheets("Trans extract")
-        .Range("A7:AZ100000").ClearContents
+VI_KEYWORDS = [
+    "Itemised Calls",
+    "Outgoing calls",
+    "Date - Time Number Duration",
+    "Usage Details",
+    "Call Charges"
+]
 
-        '=== Safe try QAAMacro.Logon ===
-        On Error Resume Next
-        QAAMacro.Logon
-        If Err.Number <> 0 Then
-            RunTransExtract = "Error: QAAMacro Add-in Missing"
-            Err.Clear
-            GoTo Cleanup
-        End If
-        On Error GoTo ErrHandler
+AIRTEL_KEYWORDS = [
+    "YOUR ITEMIZED STATEMENT",
+    "Local Calls",
+    "S.no Date Time Number Duration",
+    "HH:MM:SS",
+    "Pulse Amount"
+]
 
-        QAAMacro.RecalculateRange "B6"
+# ✅ All call-related keywords
+CALL_KEYWORDS = [*UNIVERSAL_CALL_KEYWORDS, *VI_KEYWORDS, *AIRTEL_KEYWORDS]
 
-        .Rows("1:1").EntireRow.Hidden = True
+# ✅ Keywords to ignore
+EXCLUDE_KEYWORDS = [
+    "SMS",
+    "MESSAGES",
+    "INTERNET",
+    "DATA",
+    "KB",
+    "MB",
+    "GB",
+    "VALUE ADDED SERVICES",
+    "PLAN CHARGES",
+    "SUMMARY",
+    "ACCOUNT SUMMARY",
+    "PAYMENT",
+    "CHARGES"
+]
 
-        ' Autofit range
-        .Columns("C:AT").EntireColumn.AutoFit
-    End With
+# ==========================
+# ✅ REGEX PATTERNS
+# ==========================
 
-    ' Wait until Excel finished calculating
-    Call WaitForCalc
+duration_pattern = r"\b\d{2}:\d{2}:\d{2}\b"
+number_pattern = r"\b\d{7,12}\b"
 
-    RunTransExtract = "Success"
-    GoTo Cleanup
+call_records = []
 
-ErrHandler:
-    RunTransExtract = "Error: " & Err.Description
+with pdfplumber.open(PDF_PATH) as pdf:
+    for page in pdf.pages:
+        text = page.extract_text()
+        if not text:
+            continue
 
-Cleanup:
-    Application.ScreenUpdating = True
-End Function
+        for line in text.split("\n"):
+            uline = line.upper()
 
+            # ✅ Skip unwanted sections
+            if any(word in uline for word in EXCLUDE_KEYWORDS):
+                continue
 
-'=== helper to wait ===
-Private Sub WaitForCalc()
-    Do While Application.CalculationState <> xlDone
-        DoEvents
-    Loop
-End Sub
+            # ✅ Check keyword or numeric patterns
+            has_keyword = any(word.upper() in uline for word in CALL_KEYWORDS)
+            has_patterns = (
+                re.search(duration_pattern, line) and 
+                re.search(number_pattern, line)
+            )
 
-'=== helper to check sheet ===
-Private Function WorksheetExists(sName As String) As Boolean
-    On Error Resume Next
-    WorksheetExists = Not Sheets(sName) Is Nothing
-    On Error GoTo 0
-End Function
+            if has_keyword or has_patterns:
+                call_records.append(line.strip())
+
+# ==========================
+# ✅ EXPORT TO TEXT FILE
+# ==========================
+
+with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+    f.write("=== CALL RECORDS ===\n\n")
+    for record in call_records:
+        f.write(record + "\n")
+
+print(f"\n✅ Export Complete!")
+print(f"Saved to: {OUTPUT_PATH}")
+print(f"Total Records: {len(call_records)}")
