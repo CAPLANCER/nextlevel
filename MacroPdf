@@ -1,33 +1,141 @@
-Sub ExportRangeAsPDF_Corrected()
-    Dim sheetName As String
-    Dim rangeAddress As String
-    Dim ws As Worksheet
-    Dim pdfPath As String
+import re
+import os
+import sys
 
-    ' === CONFIGURATION ===
-    sheetName = "Rank Summary"
-    rangeAddress = "B1:Y23"
-    ' =====================
+def determine_provider_from_filename(filename):
+    """
+    Detects the provider (jio, airtel, vi) based on the filename string.
+    """
+    filename_lower = filename.lower()
+    if "jio" in filename_lower:
+        return "jio"
+    elif "airtel" in filename_lower:
+        return "airtel"
+    elif "vi" in filename_lower or "vodafone" in filename_lower:
+        return "vi"
+    return None
 
-    ' Get worksheet
-    On Error Resume Next
-    Set ws = ThisWorkbook.Sheets(sheetName)
-    On Error GoTo 0
-    If ws Is Nothing Then Exit Sub
+def extract_call_records(file_path, provider):
+    """
+    Extracts call records from a text file based on the provider's specific headers/keywords.
+    """
+    extracted_lines = []
+    capture = False
+    
+    # Airtel specific state to avoid capturing SMS sections
+    airtel_sms_block = False 
+    
+    provider = provider.lower()
+    
+    try:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Error: The file '{file_path}' was not found.")
 
-    ' Set the print area to the desired range
-    ws.PageSetup.PrintArea = rangeAddress
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                clean_line = re.sub(r'\[source: \d+\]', '', line).strip()
+                
+                # --- JIO LOGIC ---
+                if provider == 'jio':
+                    if "Voice" in clean_line and "Voice Total" not in clean_line and "Voice Call" not in clean_line:
+                        if "2.0" in clean_line or clean_line == "Voice":
+                            capture = True
+                    
+                    if capture:
+                        extracted_lines.append(clean_line)
+                    
+                    if "Voice Total" in clean_line:
+                        capture = False
 
-    ' Optional: fit to 1 page
-    With ws.PageSetup
-        .Zoom = False
-        .FitToPagesWide = 1
-        .FitToPagesTall = False
-    End With
+                # --- AIRTEL LOGIC ---
+                elif provider == 'airtel':
+                    if "sms" in clean_line.lower():
+                        airtel_sms_block = True
+                        capture = False
+                    elif "local calls" in clean_line.lower() or "std calls" in clean_line.lower() or "voice" in clean_line.lower():
+                        airtel_sms_block = False
 
-    ' Define output PDF path
-    pdfPath = ThisWorkbook.Path & "\" & sheetName & ".pdf"
+                    airtel_headers = [
+                        "local calls", "to fixedline", "to cug", 
+                        "to airtel mobile", "to other mobiles"
+                    ]
+                    
+                    if any(header in clean_line.lower() for header in airtel_headers):
+                        if not airtel_sms_block:
+                            capture = True
+                            extracted_lines.append(clean_line)
+                        continue
+                    
+                    if capture:
+                        if "Total" in clean_line or "Grand Total" in clean_line:
+                            extracted_lines.append(clean_line)
+                            capture = False
+                        elif clean_line == "":
+                            capture = False 
+                        else:
+                            extracted_lines.append(clean_line)
 
-    ' Export the worksheet using the print area
-    ws.ExportAsFixedFormat Type:=xlTypePDF, Filename:=pdfPath
-End Sub
+                # --- VI LOGIC ---
+                elif provider == 'vi':
+                    vi_headers = ["outgoing call", "std"]
+                    has_vi_keyword = any(header in clean_line.lower() for header in vi_headers)
+                    has_total = "total" in clean_line.lower() or "grand total" in clean_line.lower()
+
+                    if has_vi_keyword and not has_total:
+                        capture = True
+                        extracted_lines.append(clean_line)
+                        continue
+                        
+                    if capture:
+                        if has_total:
+                            extracted_lines.append(clean_line)
+                            capture = False
+                        else:
+                            extracted_lines.append(clean_line)
+
+        return extracted_lines
+
+    except Exception as e:
+        raise e
+
+def process_and_print(file_name):
+    # 1. Auto-detect provider
+    provider_name = determine_provider_from_filename(file_name)
+    
+    if not provider_name:
+        sys.stderr.write(f"ERROR: Could not detect provider (Jio, Airtel, Vi) from filename: {file_name}\n")
+        sys.exit(1)
+
+    print(f"--- Detected Provider: {provider_name.upper()} from filename ---")
+    print(f"--- Processing {file_name} ---")
+    
+    try:
+        data = extract_call_records(file_name, provider_name)
+        
+        if data:
+            count = len(data)
+            print(f"Found {count} lines of data.")
+            
+            output_filename = f"{provider_name}_call_records.txt"
+            with open(output_filename, 'w', encoding='utf-8') as f:
+                f.write("\n".join(data))
+            print(f"Successfully saved records to: {output_filename}")
+        else:
+            sys.stderr.write(f"WARNING: No records found for {provider_name} in {file_name}.\n")
+            
+    except Exception as e:
+        sys.stderr.write(f"SCRIPT ERROR: {str(e)}\n")
+        sys.exit(1)
+
+# --- MAIN EXECUTION BLOCK ---
+if __name__ == "__main__":
+    # Replace this filename with your actual dynamic input from UiPath
+    # Example input: 'Dummy_Jio_November25.txt'
+    input_file = 'Dummy_Jio_November25.txt' 
+    
+    # Check if file exists dummy check for testing, remove in prod if path is absolute
+    if not os.path.exists(input_file):
+        # Just for testing in this environment, creating a dummy file to demonstrate
+        with open(input_file, 'w') as f: f.write("2.0 Voice\n10-JAN-2024 18:30:14 9876543210\nVoice Total")
+
+    process_and_print(input_file)
