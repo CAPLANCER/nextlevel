@@ -1,4 +1,5 @@
 import re
+import os
 
 def extract_call_records(file_path, provider):
     """
@@ -11,14 +12,16 @@ def extract_call_records(file_path, provider):
     extracted_lines = []
     capture = False
     
-    # Define rules for each provider
-    # 'start_triggers': Keywords that mark the beginning of a relevant section
-    # 'stop_triggers': Keywords that mark the end of a section
-    # 'section_headers': Specific headers for Airtel/VI to look for to start capturing
+    # Airtel specific state to avoid capturing SMS sections that share similar sub-headers
+    airtel_sms_block = False 
     
+    # Define rules for each provider
     provider = provider.lower()
     
     try:
+        if not os.path.exists(file_path):
+            return [f"Error: The file '{file_path}' was not found in the current folder."]
+
         with open(file_path, 'r', encoding='utf-8') as file:
             for line in file:
                 # Clean the line (remove extraction tags if any exist)
@@ -28,7 +31,6 @@ def extract_call_records(file_path, provider):
                 if provider == 'jio':
                     # START Condition: "Voice" (but not "Voice Total" or summary headers like "Voice Call")
                     if "Voice" in clean_line and "Voice Total" not in clean_line and "Voice Call" not in clean_line:
-                        # Ensure we capture the section header "2.0 Voice" or just "Voice"
                         if "2.0" in clean_line or clean_line == "Voice":
                             capture = True
                     
@@ -41,81 +43,95 @@ def extract_call_records(file_path, provider):
 
                 # --- AIRTEL LOGIC ---
                 elif provider == 'airtel':
-                    # Headers that indicate a call record section is starting
+                    # Context Awareness: Check if we are entering an SMS section
+                    if "sms" in clean_line.lower():
+                        airtel_sms_block = True
+                        capture = False # Ensure we stop capturing if we were
+                    elif "local calls" in clean_line.lower() or "std calls" in clean_line.lower() or "voice" in clean_line.lower():
+                        airtel_sms_block = False
+
                     airtel_headers = [
                         "local calls", "to fixedline", "to cug", 
                         "to airtel mobile", "to other mobiles"
                     ]
                     
-                    # Check if the line matches one of the known headers
+                    # Check if the line matches a header
                     if any(header in clean_line.lower() for header in airtel_headers):
-                        capture = True
-                        extracted_lines.append(clean_line) # Keep the header for context
+                        # ONLY capture if we are NOT in an SMS block
+                        if not airtel_sms_block:
+                            capture = True
+                            extracted_lines.append(clean_line)
                         continue
                     
                     if capture:
-                        # STOP Condition Heuristics for Airtel:
-                        # 1. Line contains "Total" (usually ends a section)
-                        # 2. Line contains "Grand Total"
-                        # 3. Line is completely empty (often separates sections in text extracts)
                         if "Total" in clean_line or "Grand Total" in clean_line:
-                            extracted_lines.append(clean_line) # Capture the total line
+                            extracted_lines.append(clean_line)
                             capture = False
                         elif clean_line == "":
-                            # Optional: Stop on empty lines if your text file is sparse
-                            # Comment out the line below if your records have gaps
                             capture = False 
                         else:
                             extracted_lines.append(clean_line)
 
                 # --- VI LOGIC ---
                 elif provider == 'vi':
-                    vi_headers = ["outgoing calls", "std"]
+                    vi_headers = ["outgoing call", "std"]
                     
-                    if any(header in clean_line.lower() for header in vi_headers):
+                    # Helper bools
+                    has_vi_keyword = any(header in clean_line.lower() for header in vi_headers)
+                    has_total = "total" in clean_line.lower() or "grand total" in clean_line.lower()
+
+                    # START Condition: Line has keyword (e.g., "STD") AND does NOT contain "Total"
+                    # This prevents footer lines like "Total STD Charges" from restarting capture
+                    if has_vi_keyword and not has_total:
                         capture = True
                         extracted_lines.append(clean_line)
                         continue
                         
                     if capture:
-                        # STOP Condition Heuristics for VI:
-                        if "Total" in clean_line or "Grand Total" in clean_line:
+                        # STOP Condition: Strictly look for "Total"
+                        if has_total:
                             extracted_lines.append(clean_line)
-                            capture = False
-                        elif clean_line == "":
-                             # Assuming sections are separated by whitespace
                             capture = False
                         else:
                             extracted_lines.append(clean_line)
 
         return extracted_lines
 
-    except FileNotFoundError:
-        return [f"Error: The file '{file_path}' was not found."]
+    except Exception as e:
+        return [f"An unexpected error occurred: {e}"]
 
-# --- Usage Examples ---
-
-# 1. For Jio
-# records = extract_call_records('ExtractedText.txt', 'jio')
-
-# 2. For Airtel
-# records = extract_call_records('Airtel_Bill.txt', 'airtel')
-
-# 3. For VI
-# records = extract_call_records('VI_Bill.txt', 'vi')
-
-# --- Wrapper to print results ---
 def process_and_print(file_name, provider_name):
-    print(f"--- Extracting {provider_name.upper()} records from {file_name} ---")
+    print(f"--- Processing {file_name} for {provider_name.upper()} ---")
     data = extract_call_records(file_name, provider_name)
     
     if data and "Error" not in data[0]:
-        print("\n".join(data))
-        # Optional: Save to file
-        # with open(f'{provider_name}_extracted.txt', 'w', encoding='utf-8') as f:
-        #     f.write("\n".join(data))
+        count = len(data)
+        print(f"Found {count} lines of data.")
+        
+        # Save to file with operator name
+        output_filename = f"{provider_name}_call_records.txt"
+        try:
+            with open(output_filename, 'w', encoding='utf-8') as f:
+                f.write("\n".join(data))
+            print(f"Successfully saved records to: {output_filename}")
+            
+            # Print a small preview
+            print("\nPreview of first 10 lines:")
+            print("\n".join(data[:10]))
+            if count > 10:
+                print("...")
+        except Exception as e:
+            print(f"Error saving file: {e}")
+            
     else:
         print(data[0] if data else "No records found matching the keywords.")
 
-# Example execution (Uncomment to run if you have files)
-# process_and_print('ExtractedText.txt', 'jio')
+# --- MAIN EXECUTION BLOCK ---
+# This block runs automatically when you run the script
+if __name__ == "__main__":
+    # 1. Make sure your text file is named 'ExtractedText.txt'
+    # 2. If it is named something else, change it inside the quotes below
+    input_file = 'ExtractedText.txt' 
+    
+    # Run the extraction (Change 'jio' to 'airtel' or 'vi' as needed)
+    process_and_print(input_file, 'vi')
