@@ -1,26 +1,214 @@
-Option Explicit
+import re
+import os
+import sys
 
-Sub DeleteRows_ByScheme()
-    Dim ws As Worksheet
-    Dim lastRow As Long, r As Long
-    Dim schemeName As String
+def determine_provider_from_filename(filename):
+    """
+    Detects the provider (jio, airtel, vi) based on the filename string.
+    """
+    filename_lower = filename.lower()
+    if "jio" in filename_lower:
+        return "jio"
+    elif "airtel" in filename_lower:
+        return "airtel"
+    elif "vi" in filename_lower or "vodafone" in filename_lower:
+        return "vi"
+    return None
+
+def extract_customer_name(file_path, provider):
+    """
+    Extracts the customer name from the bill.
+    Pattern Priority:
+    1. Check for lines starting with Mr./Ms./Mrs. (Works for all 3 based on your samples).
+    2. Provider-specific fallbacks (e.g., Airtel 'Billing Address').
+    """
+    provider = provider.lower()
+    name = None
     
-    ' Ask user for scheme name
-    schemeName = InputBox("Enter Scheme Name to delete:", "Delete Scheme Rows")
-    If Trim(schemeName) = "" Then Exit Sub
+    # Regex to catch names starting with a title (Mr, Ms, Mrs, Dr, Prof)
+    # Checks for case-insensitive match (e.g., "Mr.", "mr.", "Ms") followed by text
+    name_with_title_pattern = re.compile(r'^\s*(?:Mr|Ms|Mrs|Dr|Prof)\.?\s+[A-Za-z\s]+', re.IGNORECASE)
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            # Read only the first 50 lines to find the name (optimization)
+            lines = [next(file) for _ in range(50)]
+            
+            for i, line in enumerate(lines):
+                clean_line = re.sub(r'\[source: \d+\]', '', line).strip()
+                if not clean_line: continue # Skip empty lines
+                
+                # --- STRATEGY 1: Common Honorific Pattern (Works for Jio, Airtel, Vi) ---
+                # Matches: "Ms. Priyanka Yogesh Khandelwal", "Mr. purab Vijay dagha", "Mr. Ramkumar lyer"
+                if name_with_title_pattern.match(clean_line):
+                    # sanity check: exclude long sentences that might start with a title word by accident
+                    if len(clean_line) < 60: 
+                        name = clean_line
+                        break
+                
+                # --- STRATEGY 2: Provider Specific Fallbacks ---
+                
+                # AIRTEL Fallback: Look for "Billing Address"
+                if provider == 'airtel':
+                    if "billing address" in clean_line.lower():
+                        # The name is usually the immediate next non-empty line
+                        for next_line in lines[i+1:]:
+                            next_clean = next_line.strip()
+                            if next_clean:
+                                name = next_clean
+                                break
+                        if name: break
+
+                # JIO Fallback: Look near "Account Number" if title search failed
+                elif provider == 'jio':
+                    if "Account Number" in clean_line:
+                        # Look backwards for the first purely alphabetic line
+                        for back_idx in range(i-1, -1, -1):
+                            candidate = lines[back_idx].strip()
+                            # Heuristic: mostly letters, reasonable length, not a header like "JioPostPaid"
+                            if candidate and 3 < len(candidate) < 40 and "postpaid" not in candidate.lower():
+                                name = candidate
+                                break
+                        if name: break
+                            
+    except Exception as e:
+        sys.stderr.write(f"WARNING: Name extraction failed: {e}\n")
+        return None
+
+    return name
+
+def extract_call_records(file_path, provider):
+    """
+    Extracts call records from a text file based on the provider's specific headers/keywords.
+    """
+    extracted_lines = []
+    capture = False
     
-    Set ws = ActiveSheet
-    lastRow = ws.Cells(ws.Rows.Count, "G").End(xlUp).Row
+    # Airtel specific state to avoid capturing SMS sections
+    airtel_sms_block = False 
     
-    Application.ScreenUpdating = False
+    provider = provider.lower()
     
-    ' Loop backwards to safely delete rows
-    For r = lastRow To 1 Step -1
-        If LCase(Trim(ws.Cells(r, "G").Value)) = LCase(Trim(schemeName)) Then
-            ws.Rows(r).Delete
-        End If
-    Next r
+    try:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Error: The file '{file_path}' was not found.")
+
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                clean_line = re.sub(r'\[source: \d+\]', '', line).strip()
+                
+                # --- JIO LOGIC ---
+                if provider == 'jio':
+                    if "Voice" in clean_line and "Voice Total" not in clean_line and "Voice Call" not in clean_line:
+                        if "2.0" in clean_line or clean_line == "Voice":
+                            capture = True
+                    
+                    if capture:
+                        extracted_lines.append(clean_line)
+                    
+                    if "Voice Total" in clean_line:
+                        capture = False
+
+                # --- AIRTEL LOGIC ---
+                elif provider == 'airtel':
+                    if "sms" in clean_line.lower():
+                        airtel_sms_block = True
+                        capture = False
+                    elif "local calls" in clean_line.lower() or "std calls" in clean_line.lower() or "voice" in clean_line.lower():
+                        airtel_sms_block = False
+
+                    airtel_headers = [
+                        "local calls", "to fixedline", "to cug", 
+                        "to airtel mobile", "to other mobiles"
+                    ]
+                    
+                    if any(header in clean_line.lower() for header in airtel_headers):
+                        if not airtel_sms_block:
+                            capture = True
+                            extracted_lines.append(clean_line)
+                        continue
+                    
+                    if capture:
+                        if "Total" in clean_line or "Grand Total" in clean_line:
+                            extracted_lines.append(clean_line)
+                            capture = False
+                        elif clean_line == "":
+                            capture = False 
+                        else:
+                            extracted_lines.append(clean_line)
+
+                # --- VI LOGIC ---
+                elif provider == 'vi':
+                    # Updated headers to include "Calls - Special Numbers"
+                    vi_headers = ["outgoing call", "std", "calls - special numbers"]
+                    
+                    has_vi_keyword = any(header in clean_line.lower() for header in vi_headers)
+                    has_total = "total" in clean_line.lower() or "grand total" in clean_line.lower()
+
+                    if has_vi_keyword and not has_total:
+                        capture = True
+                        extracted_lines.append(clean_line)
+                        continue
+                        
+                    if capture:
+                        if has_total:
+                            extracted_lines.append(clean_line)
+                            capture = False
+                        else:
+                            extracted_lines.append(clean_line)
+
+        return extracted_lines
+
+    except Exception as e:
+        raise e
+
+def process_and_print(file_name):
+    # 1. Auto-detect provider
+    provider_name = determine_provider_from_filename(file_name)
     
-    Application.ScreenUpdating = True
-    MsgBox "All rows with scheme '" & schemeName & "' have been deleted.", vbInformation
-End Sub
+    if not provider_name:
+        sys.stderr.write(f"ERROR: Could not detect provider (Jio, Airtel, Vi) from filename: {file_name}\n")
+        sys.exit(1)
+
+    print(f"--- Detected Provider: {provider_name.upper()} from filename ---")
+    print(f"--- Processing {file_name} ---")
+    
+    try:
+        # Extract Name First
+        customer_name = extract_customer_name(file_name, provider_name)
+        if customer_name:
+            print(f"Customer Name Found: {customer_name}")
+        else:
+            print("Customer Name: Not Found")
+
+        # Extract Records
+        data = extract_call_records(file_name, provider_name)
+        
+        if data:
+            count = len(data)
+            print(f"Found {count} lines of data.")
+            
+            output_filename = f"{provider_name}_call_records.txt"
+            with open(output_filename, 'w', encoding='utf-8') as f:
+                # Add the name to the top of the file for reference
+                if customer_name:
+                    f.write(f"Customer Name: {customer_name}\n")
+                    f.write("-" * 30 + "\n")
+                
+                f.write("\n".join(data))
+            print(f"Successfully saved records to: {output_filename}")
+        else:
+            sys.stderr.write(f"WARNING: No records found for {provider_name} in {file_name}.\n")
+            
+    except Exception as e:
+        sys.stderr.write(f"SCRIPT ERROR: {str(e)}\n")
+        sys.exit(1)
+
+# --- MAIN EXECUTION BLOCK ---
+if __name__ == "__main__":
+    # Replace this filename with your actual dynamic input from UiPath
+    # Example input: 'Dummy_Jio_November25.txt'
+    input_file = 'ExtractedText.txt' 
+    
+    # Run the processing
+    process_and_print(input_file)
