@@ -1,6 +1,6 @@
 Option Explicit
 
-Sub Extract_Subject_And_Body()
+Sub Extract_Subject_And_Body_Multi()
 
     Dim wsSrc As Worksheet, wsOut As Worksheet
     Dim lastRow As Long, outRow As Long
@@ -39,21 +39,30 @@ Sub Extract_Subject_And_Body()
         txt = Trim(wsSrc.Cells(r, "A").Value)
         If txt = "" Then GoTo NextRow
 
-        ' ---------------- SUBJECT EXTRACTION ----------------
-        If subjectText = "" Then
-            If InStr(1, txt, "Microsoft Outlook", vbTextCompare) > 0 _
-               And InStr(1, txt, "Your message", vbTextCompare) > 0 Then
+        ' -------- SUBJECT --------
+        If InStr(1, txt, "Microsoft Outlook", vbTextCompare) > 0 _
+           And InStr(1, txt, "Your message", vbTextCompare) > 0 Then
 
-                subjectText = txt
-                subjectText = Replace(subjectText, "Microsoft Outlook", "", , , vbTextCompare)
-                subjectText = Left(subjectText, InStr(1, subjectText, "Your message", vbTextCompare) - 1)
-                subjectText = Trim(subjectText)
-
-                GoTo NextRow
+            ' If previous email exists → write it
+            If subjectText <> "" Or bodyText <> "" Then
+                wsOut.Cells(outRow, "A").Value = subjectText
+                wsOut.Cells(outRow, "B").Value = Trim(bodyText)
+                outRow = outRow + 1
             End If
+
+            ' Reset for new email
+            subjectText = txt
+            subjectText = Replace(subjectText, "Microsoft Outlook", "", , , vbTextCompare)
+            subjectText = Left(subjectText, InStr(1, subjectText, "Your message", vbTextCompare) - 1)
+            subjectText = Trim(subjectText)
+
+            bodyText = ""
+            captureBody = False
+
+            GoTo NextRow
         End If
 
-        ' ---------------- BODY EXTRACTION ----------------
+        ' -------- BODY --------
         If InStr(1, txt, "Your message", vbTextCompare) > 0 Then
             captureBody = True
         End If
@@ -61,21 +70,20 @@ Sub Extract_Subject_And_Body()
         If captureBody Then
             bodyText = bodyText & " " & txt
 
-            ' Stop body when mail id is found
             If InStr(1, txt, "@icicipruamc.com", vbTextCompare) > 0 Then
-                GoTo WriteOutput
+                captureBody = False
             End If
         End If
 
 NextRow:
     Next r
 
-WriteOutput:
+    ' Write last email
     If subjectText <> "" Or bodyText <> "" Then
         wsOut.Cells(outRow, "A").Value = subjectText
         wsOut.Cells(outRow, "B").Value = Trim(bodyText)
     End If
 
-    MsgBox "Subject and Body extracted successfully!", vbInformation
+    MsgBox "All emails extracted successfully!", vbInformation
 
-End Sub
+End Sub 
