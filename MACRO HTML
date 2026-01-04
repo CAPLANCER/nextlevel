@@ -1,173 +1,125 @@
-import requests
-import json
-import sys
-import time
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+Option Explicit
 
-# ==========================================
-# USER CONFIGURATION
-# ==========================================
-API_KEY = "YOUR_ACTUAL_API_KEY_HERE"
-FILE_PATH = "your_document.pdf"
-PROXY_URL = "http://10.10.1.10:3128"
+'==========================================================
+' MAIN CONTROLLER
+'==========================================================
+Sub Process_Gold_Sheets()
 
-TIMEOUT_SECONDS = 60
-MODEL_NAME = "gemini-1.5-flash"
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim lastRow As Long
+    Dim r As Long
+    Dim cellText As String
 
-# Retry Settings
-MAX_RETRIES = 5
-RETRY_DELAY = 10  # seconds
+    Set wb = ThisWorkbook
 
-# Session + Retry Adapter
-def get_retry_session():
-    session = requests.Session()
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
 
-    retry = Retry(
-        total=MAX_RETRIES,
-        backoff_factor=2,  # exponential backoff: 1, 2, 4, 8...
-        status_forcelist=[408, 429, 500, 502, 503, 504],
-        allowed_methods=["GET", "POST"]
-    )
+    '==========================================================
+    ' STEP 1: COMMON PROCESSING FOR ALL SHEETS
+    '==========================================================
+    For Each ws In wb.Worksheets
 
-    adapter = HTTPAdapter(max_retries=retry)
+        ' Clear all fill colors
+        ws.Cells.Interior.ColorIndex = xlNone
 
-    session.mount("https://", adapter)
-    session.mount("http://", adapter)
+        ' Delete row 5 if exists
+        If ws.Cells.Rows.Count >= 5 Then
+            ws.Rows(5).Delete
+        End If
 
-    return session
+        ' Header formatting A6:AG6
+        With ws.Range("A6:AG6")
+            .Interior.Color = RGB(0, 128, 255)
+            .Font.Bold = True
+            .Font.Color = vbBlack
+        End With
 
+        ' Process Column A starting from row 6
+        lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
 
-# Global session with retry
-session = get_retry_session()
+        For r = 6 To lastRow
 
-# Proxy dictionary
-proxies = {
-    "http": PROXY_URL,
-    "https": PROXY_URL,
-}
+            cellText = LCase(Trim(ws.Cells(r, "A").Value))
 
-# ==========================================
-# UPLOAD FILE WITH RETRIES
-# ==========================================
-def upload_file():
-    url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
-    print(f"[Step 1] Uploading file with retry enabled: {FILE_PATH}")
+            ' Highlight ICICI PRUDENTIAL rows
+            If InStr(cellText, "icici prudential") > 0 Then
+                ws.Rows(r).Interior.Color = RGB(155, 194, 230)
+                ws.Rows(r).Font.Bold = True
+            End If
 
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            with open(FILE_PATH, "rb") as f:
-                files = {"file": (FILE_PATH, f, "application/pdf")}
+            ' Delete "* Less" row and below
+            If InStr(cellText, "less") > 0 Then
+                ws.Rows(r & ":" & ws.Rows.Count).Delete
+                Exit For
+            End If
 
-                response = session.post(
-                    url,
-                    files=files,
-                    proxies=proxies,
-                    timeout=TIMEOUT_SECONDS
-                )
+        Next r
 
-            if response.status_code == 200:
-                file_uri = response.json()["file"]["uri"]
-                print(" > Upload success! File URI:", file_uri)
-                return file_uri
+    Next ws
 
-            elif response.status_code >= 500:
-                print(f"   Server error {response.status_code}. Retrying...")
+    '==========================================================
+    ' STEP 2: MERGE TRACKERS INTO PEERS (AND DELETE TRACKERS)
+    '==========================================================
+    MergeTracker "GOLD ETF_Peer", "GOLD ETF_Tracker"
+    MergeTracker "GOLD FOF_Peer", "GOLD FOF_Tracker"
 
-            else:
-                print(f"   API error {response.status_code}: {response.text}")
-                return None
+    Application.EnableEvents = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
 
-        except requests.exceptions.RequestException as e:
-            print(f"   Network error: {e}")
+    MsgBox "Gold sheets processed successfully!", vbInformation
 
-        if attempt < MAX_RETRIES:
-            print(f"   Waiting {RETRY_DELAY}s before retrying upload...")
-            time.sleep(RETRY_DELAY)
-        else:
-            print("   Upload failed after max retries.")
-            return None
+End Sub
 
 
-# ==========================================
-# GENERATE CONTENT WITH RETRIES
-# ==========================================
-def generate_content(file_uri):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={API_KEY}"
+'==========================================================
+' HELPER: MERGE TRACKER INTO PEER AND DELETE TRACKER
+'==========================================================
+Private Sub MergeTracker(peerSheetName As String, trackerSheetName As String)
 
-    headers = {"Content-Type": "application/json"}
+    Dim wsPeer As Worksheet
+    Dim wsTracker As Worksheet
+    Dim lastRow As Long
+    Dim pasteRow As Long
 
-    payload = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [
-                    {"fileData": {"mimeType": "application/pdf", "fileUri": file_uri}},
-                    {"text": "Analyze this document and provide a summary."}
-                ]
-            }
-        ]
-    }
+    ' Safety check
+    If Not SheetExists(peerSheetName) Or Not SheetExists(trackerSheetName) Then Exit Sub
 
-    print(f"[Step 2] Sending request to model... (Retry enabled)")
+    Set wsPeer = ThisWorkbook.Sheets(peerSheetName)
+    Set wsTracker = ThisWorkbook.Sheets(trackerSheetName)
 
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            print(f" > Attempt {attempt}/{MAX_RETRIES}")
+    ' Find last used row in peer
+    lastRow = wsPeer.Cells(wsPeer.Rows.Count, "A").End(xlUp).Row
+    pasteRow = lastRow + 3    ' Leave 2 blank rows
 
-            response = session.post(
-                url,
-                headers=headers,
-                json=payload,
-                proxies=proxies,
-                timeout=TIMEOUT_SECONDS
-            )
+    ' Tracker label
+    With wsPeer.Cells(pasteRow, "A")
+        .Value = "Tracker"
+        .Font.Bold = True
+    End With
 
-            if response.status_code == 200:
-                return response.json()
+    ' Copy tracker data
+    wsTracker.UsedRange.Copy
+    wsPeer.Cells(pasteRow + 1, "A").PasteSpecial xlPasteAll
+    wsPeer.Cells(pasteRow + 1, "A").PasteSpecial xlPasteColumnWidths
+    Application.CutCopyMode = False
 
-            elif response.status_code >= 500:
-                print(f"   Server error {response.status_code}. Retrying...")
+    ' Delete tracker sheet
+    Application.DisplayAlerts = False
+    wsTracker.Delete
+    Application.DisplayAlerts = True
 
-            else:
-                print(f"   API error {response.status_code}: {response.text}")
-                return None
-
-        except requests.exceptions.Timeout:
-            print(f"   Timeout (> {TIMEOUT_SECONDS}s).")
-        except requests.exceptions.RequestException as e:
-            print(f"   Network error: {e}")
-
-        if attempt < MAX_RETRIES:
-            print(f"   Waiting {RETRY_DELAY}s before retry...")
-            time.sleep(RETRY_DELAY)
-        else:
-            print("   Model request failed after max retries.")
-            return None
+End Sub
 
 
-# ==========================================
-# SAVE OUTPUT
-# ==========================================
-def save_output(data):
-    if data:
-        filename = "response_output.json"
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
-        print(f"[Step 3] Saved response to {filename}")
-
-        try:
-            print("\n--- AI Response ---")
-            print(data["candidates"][0]["content"]["parts"][0]["text"])
-        except KeyError:
-            print("Could not extract text.")
-
-
-# ==========================================
-# MAIN
-# ==========================================
-if __name__ == "__main__":
-    uri = upload_file()
-    if uri:
-        result_json = generate_content(uri)
-        save_output(result_json)
+'==========================================================
+' HELPER: CHECK IF SHEET EXISTS
+'==========================================================
+Private Function SheetExists(sheetName As String) As Boolean
+    On Error Resume Next
+    SheetExists = Not ThisWorkbook.Sheets(sheetName) Is Nothing
+    On Error GoTo 0
+End Function
