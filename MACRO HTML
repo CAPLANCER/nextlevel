@@ -1,125 +1,46 @@
-Option Explicit
+import requests
+import json
 
-'==========================================================
-' MAIN CONTROLLER
-'==========================================================
-Sub Process_Gold_Sheets()
+# -------- INPUT DATA --------
+url = "https://www.niftyindices.com/Backpage.aspx/getTotalReturnIndexString"
 
-    Dim wb As Workbook
-    Dim ws As Worksheet
-    Dim lastRow As Long
-    Dim r As Long
-    Dim cellText As String
+payload = {
+    "info": {
+        "name": "Nifty 50",
+        "startDate": "01-Dec-2025",
+        "endDate": "31-Dec-2025",
+        "indexName": "SchemeIndexName"
+    }
+}
 
-    Set wb = ThisWorkbook
+headers = {
+    "Host": "www.niftyindices.com",
+    "Origin": "https://www.niftyindices.com",
+    "Referer": "https://www.niftyindices.com/reports/historical-data",
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "User-Agent": "Mozilla/5.0",
+    "Content-Type": "application/json"
+}
 
-    Application.ScreenUpdating = False
-    Application.Calculation = xlCalculationManual
-    Application.EnableEvents = False
+proxies = {
+    "http": "http://10.16.36.82:8080",
+    "https": "http://10.16.36.82:8080"
+}
 
-    '==========================================================
-    ' STEP 1: COMMON PROCESSING FOR ALL SHEETS
-    '==========================================================
-    For Each ws In wb.Worksheets
+# -------- API CALL --------
+response = requests.post(
+    url,
+    headers=headers,
+    json=payload,
+    proxies=proxies,
+    timeout=60
+)
 
-        ' Clear all fill colors
-        ws.Cells.Interior.ColorIndex = xlNone
+# -------- OUTPUT --------
+response_text = response.text
 
-        ' Delete row 5 if exists
-        If ws.Cells.Rows.Count >= 5 Then
-            ws.Rows(5).Delete
-        End If
+# Write output to file (optional)
+with open(r"D:\BotFiles\NSE BSE Benchmark\NSE Output Files\JsonOutput.json", "w") as f:
+    f.write(response_text)
 
-        ' Header formatting A6:AG6
-        With ws.Range("A6:AG6")
-            .Interior.Color = RGB(0, 128, 255)
-            .Font.Bold = True
-            .Font.Color = vbBlack
-        End With
-
-        ' Process Column A starting from row 6
-        lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-
-        For r = 6 To lastRow
-
-            cellText = LCase(Trim(ws.Cells(r, "A").Value))
-
-            ' Highlight ICICI PRUDENTIAL rows
-            If InStr(cellText, "icici prudential") > 0 Then
-                ws.Rows(r).Interior.Color = RGB(155, 194, 230)
-                ws.Rows(r).Font.Bold = True
-            End If
-
-            ' Delete "* Less" row and below
-            If InStr(cellText, "less") > 0 Then
-                ws.Rows(r & ":" & ws.Rows.Count).Delete
-                Exit For
-            End If
-
-        Next r
-
-    Next ws
-
-    '==========================================================
-    ' STEP 2: MERGE TRACKERS INTO PEERS (AND DELETE TRACKERS)
-    '==========================================================
-    MergeTracker "GOLD ETF_Peer", "GOLD ETF_Tracker"
-    MergeTracker "GOLD FOF_Peer", "GOLD FOF_Tracker"
-
-    Application.EnableEvents = True
-    Application.Calculation = xlCalculationAutomatic
-    Application.ScreenUpdating = True
-
-    MsgBox "Gold sheets processed successfully!", vbInformation
-
-End Sub
-
-
-'==========================================================
-' HELPER: MERGE TRACKER INTO PEER AND DELETE TRACKER
-'==========================================================
-Private Sub MergeTracker(peerSheetName As String, trackerSheetName As String)
-
-    Dim wsPeer As Worksheet
-    Dim wsTracker As Worksheet
-    Dim lastRow As Long
-    Dim pasteRow As Long
-
-    ' Safety check
-    If Not SheetExists(peerSheetName) Or Not SheetExists(trackerSheetName) Then Exit Sub
-
-    Set wsPeer = ThisWorkbook.Sheets(peerSheetName)
-    Set wsTracker = ThisWorkbook.Sheets(trackerSheetName)
-
-    ' Find last used row in peer
-    lastRow = wsPeer.Cells(wsPeer.Rows.Count, "A").End(xlUp).Row
-    pasteRow = lastRow + 3    ' Leave 2 blank rows
-
-    ' Tracker label
-    With wsPeer.Cells(pasteRow, "A")
-        .Value = "Tracker"
-        .Font.Bold = True
-    End With
-
-    ' Copy tracker data
-    wsTracker.UsedRange.Copy
-    wsPeer.Cells(pasteRow + 1, "A").PasteSpecial xlPasteAll
-    wsPeer.Cells(pasteRow + 1, "A").PasteSpecial xlPasteColumnWidths
-    Application.CutCopyMode = False
-
-    ' Delete tracker sheet
-    Application.DisplayAlerts = False
-    wsTracker.Delete
-    Application.DisplayAlerts = True
-
-End Sub
-
-
-'==========================================================
-' HELPER: CHECK IF SHEET EXISTS
-'==========================================================
-Private Function SheetExists(sheetName As String) As Boolean
-    On Error Resume Next
-    SheetExists = Not ThisWorkbook.Sheets(sheetName) Is Nothing
-    On Error GoTo 0
-End Function
+response_text
