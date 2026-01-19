@@ -1,89 +1,35 @@
-Option Explicit
+import requests
+import json
 
-Sub Extract_Subject_And_Body_Multi()
+url = "https://www.niftyindices.com/Backpage.aspx/getTotalReturnIndexString"
 
-    Dim wsSrc As Worksheet, wsOut As Worksheet
-    Dim lastRow As Long, outRow As Long
-    Dim r As Long
-    Dim txt As String
-    Dim subjectText As String
-    Dim bodyText As String
-    Dim captureBody As Boolean
+payload = {
+    "info": "{'name':'Nifty 50','startDate':'01-Dec-2025','endDate':'31-Dec-2025','indexName':'SchemeIndexName'}"
+}
 
-    Set wsSrc = ThisWorkbook.Sheets("ExtractItem")
+payload["info"] = payload["info"].replace("'", "\"")
 
-    ' Prepare output sheet
-    On Error Resume Next
-    Set wsOut = ThisWorkbook.Sheets("ValidItem")
-    On Error GoTo 0
+headers = {
+    "Host": "www.niftyindices.com",
+    "Origin": "https://www.niftyindices.com",
+    "Referer": "https://www.niftyindices.com/reports/historical-data",
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "User-Agent": "Mozilla/5.0",
+    "X-Requested-With": "XMLHttpRequest"
+}
 
-    If wsOut Is Nothing Then
-        Set wsOut = ThisWorkbook.Sheets.Add
-        wsOut.Name = "ValidItem"
-    Else
-        wsOut.Cells.Clear
-    End If
+proxies = {
+    "http": "http://10.16.36.82:8080",
+    "https": "http://10.16.36.82:8080"
+}
 
-    wsOut.Range("A1").Value = "Subject"
-    wsOut.Range("B1").Value = "Body"
-    outRow = 2
+response = requests.post(
+    url,
+    json=payload,
+    headers=headers,
+    proxies=proxies,
+    verify=False,
+    timeout=60
+)
 
-    lastRow = wsSrc.Cells(wsSrc.Rows.Count, "A").End(xlUp).Row
-
-    subjectText = ""
-    bodyText = ""
-    captureBody = False
-
-    For r = 1 To lastRow
-
-        txt = Trim(wsSrc.Cells(r, "A").Value)
-        If txt = "" Then GoTo NextRow
-
-        ' -------- SUBJECT --------
-        If InStr(1, txt, "Microsoft Outlook", vbTextCompare) > 0 _
-           And InStr(1, txt, "Your message", vbTextCompare) > 0 Then
-
-            ' If previous email exists → write it
-            If subjectText <> "" Or bodyText <> "" Then
-                wsOut.Cells(outRow, "A").Value = subjectText
-                wsOut.Cells(outRow, "B").Value = Trim(bodyText)
-                outRow = outRow + 1
-            End If
-
-            ' Reset for new email
-            subjectText = txt
-            subjectText = Replace(subjectText, "Microsoft Outlook", "", , , vbTextCompare)
-            subjectText = Left(subjectText, InStr(1, subjectText, "Your message", vbTextCompare) - 1)
-            subjectText = Trim(subjectText)
-
-            bodyText = ""
-            captureBody = False
-
-            GoTo NextRow
-        End If
-
-        ' -------- BODY --------
-        If InStr(1, txt, "Your message", vbTextCompare) > 0 Then
-            captureBody = True
-        End If
-
-        If captureBody Then
-            bodyText = bodyText & " " & txt
-
-            If InStr(1, txt, "@icicipruamc.com", vbTextCompare) > 0 Then
-                captureBody = False
-            End If
-        End If
-
-NextRow:
-    Next r
-
-    ' Write last email
-    If subjectText <> "" Or bodyText <> "" Then
-        wsOut.Cells(outRow, "A").Value = subjectText
-        wsOut.Cells(outRow, "B").Value = Trim(bodyText)
-    End If
-
-    MsgBox "All emails extracted successfully!", vbInformation
-
-End Sub 
+print(response.text)
