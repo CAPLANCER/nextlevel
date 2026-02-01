@@ -1,35 +1,59 @@
 import requests
-import json
+import os
+import urllib3
 
-url = "https://www.niftyindices.com/Backpage.aspx/getTotalReturnIndexString"
+# ==========================================
+# 1. CONFIGURATION
+# ==========================================
+API_KEY = "YOUR_ACTUAL_API_KEY_HERE"
+FILE_PATH = "your_file.txt"  # <--- Ensure this points to your text file
+PROXY_URL = "http://10.10.1.10:3128" # Your Organization Proxy
 
-payload = {
-    "info": "{'name':'Nifty 50','startDate':'01-Dec-2025','endDate':'31-Dec-2025','indexName':'SchemeIndexName'}"
-}
+# ==========================================
+# 2. PROXY & SSL SETUP
+# ==========================================
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-payload["info"] = payload["info"].replace("'", "\"")
-
-headers = {
-    "Host": "www.niftyindices.com",
-    "Origin": "https://www.niftyindices.com",
-    "Referer": "https://www.niftyindices.com/reports/historical-data",
-    "Accept": "application/json, text/javascript, */*; q=0.01",
-    "User-Agent": "Mozilla/5.0",
-    "X-Requested-With": "XMLHttpRequest"
-}
+# Force Python to use the proxy
+os.environ['HTTP_PROXY'] = PROXY_URL
+os.environ['HTTPS_PROXY'] = PROXY_URL
 
 proxies = {
-    "http": "http://10.16.36.82:8080",
-    "https": "http://10.16.36.82:8080"
+    "http": PROXY_URL,
+    "https": PROXY_URL,
 }
 
-response = requests.post(
-    url,
-    json=payload,
-    headers=headers,
-    proxies=proxies,
-    verify=False,
-    timeout=60
-)
+def get_file_uri():
+    url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
+    
+    print(f"--- Starting Upload for '{FILE_PATH}' ---")
 
-print(response.text)
+    # Set MIME Type specifically for text files
+    mime_type = 'text/plain' 
+
+    try:
+        with open(FILE_PATH, 'rb') as f:
+            # We explicitly tell Google this is a text/plain file
+            files = {'file': (FILE_PATH, f, mime_type)}
+            
+            # verify=False bypasses SSL errors
+            response = requests.post(url, files=files, proxies=proxies, verify=False, timeout=60)
+        
+        if response.status_code == 200:
+            result = response.json()
+            file_uri = result['file']['uri']
+            print(f"✅ Upload Successful!")
+            print(f"📂 File URI: {file_uri}")
+            return file_uri
+        else:
+            print(f"❌ Upload Failed: {response.status_code}")
+            print(f"Reason: {response.text}")
+            return None
+
+    except Exception as e:
+        print(f"❌ Connection/Proxy Error: {e}")
+        return None
+
+if __name__ == "__main__":
+    uri = get_file_uri()
+    input("\nPress Enter to exit...")
