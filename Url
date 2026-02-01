@@ -2,58 +2,39 @@ import requests
 import os
 import urllib3
 
-# ==========================================
-# 1. CONFIGURATION
-# ==========================================
+# --- CONFIGURATION ---
 API_KEY = "YOUR_ACTUAL_API_KEY_HERE"
-FILE_PATH = "your_file.txt"  # <--- Ensure this points to your text file
-PROXY_URL = "http://10.10.1.10:3128" # Your Organization Proxy
+PROXY_URL = "http://10.10.1.10:3128" 
 
-# ==========================================
-# 2. PROXY & SSL SETUP
-# ==========================================
+# --- SETUP ---
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# Force Python to use the proxy
 os.environ['HTTP_PROXY'] = PROXY_URL
 os.environ['HTTPS_PROXY'] = PROXY_URL
+proxies = {"http": PROXY_URL, "https": PROXY_URL}
 
-proxies = {
-    "http": PROXY_URL,
-    "https": PROXY_URL,
-}
+print("--- DIAGNOSTIC TEST ---")
 
-def get_file_uri():
-    url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
+try:
+    # 1. Simple connectivity test to Google (Not the API yet)
+    print("1. Testing connection to google.com...")
+    response = requests.get("https://www.google.com", proxies=proxies, verify=False, timeout=10)
+    print(f"   Status Code: {response.status_code}")
     
-    print(f"--- Starting Upload for '{FILE_PATH}' ---")
+    if response.status_code == 200:
+        print("   ✅ Internet connection working.")
+    else:
+        print("   ❌ Internet test failed.")
+        print(f"   Response Content: {response.text[:200]}") # Print first 200 chars
 
-    # Set MIME Type specifically for text files
-    mime_type = 'text/plain' 
+    # 2. Testing the API Endpoint (HEAD request just to check access)
+    print("\n2. Testing API Endpoint reachability...")
+    api_url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
+    
+    # We send a dummy POST without a file just to see if the server replies
+    response_api = requests.post(api_url, proxies=proxies, verify=False, timeout=10)
+    
+    print(f"   Status Code: {response_api.status_code}")
+    print(f"   Raw Response Text: '{response_api.text}'") # <--- THIS IS KEY
 
-    try:
-        with open(FILE_PATH, 'rb') as f:
-            # We explicitly tell Google this is a text/plain file
-            files = {'file': (FILE_PATH, f, mime_type)}
-            
-            # verify=False bypasses SSL errors
-            response = requests.post(url, files=files, proxies=proxies, verify=False, timeout=60)
-        
-        if response.status_code == 200:
-            result = response.json()
-            file_uri = result['file']['uri']
-            print(f"✅ Upload Successful!")
-            print(f"📂 File URI: {file_uri}")
-            return file_uri
-        else:
-            print(f"❌ Upload Failed: {response.status_code}")
-            print(f"Reason: {response.text}")
-            return None
-
-    except Exception as e:
-        print(f"❌ Connection/Proxy Error: {e}")
-        return None
-
-if __name__ == "__main__":
-    uri = get_file_uri()
-    input("\nPress Enter to exit...")
+except Exception as e:
+    print(f"\n❌ CRITICAL ERROR: {e}")
