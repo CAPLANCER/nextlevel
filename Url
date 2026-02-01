@@ -1,40 +1,80 @@
 import requests
 import os
 import urllib3
+import json
 
-# --- CONFIGURATION ---
+# ==========================================
+# USER CONFIGURATION
+# ==========================================
 API_KEY = "YOUR_ACTUAL_API_KEY_HERE"
+FILE_PATH = "your_file.txt"   # <--- Make sure this file is in the same folder!
 PROXY_URL = "http://10.10.1.10:3128" 
 
-# --- SETUP ---
+# ==========================================
+# SYSTEM SETUP
+# ==========================================
+# 1. Disable SSL Warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# 2. Configure Proxy Environment
 os.environ['HTTP_PROXY'] = PROXY_URL
 os.environ['HTTPS_PROXY'] = PROXY_URL
-proxies = {"http": PROXY_URL, "https": PROXY_URL}
 
-print("--- DIAGNOSTIC TEST ---")
+proxies = {
+    "http": PROXY_URL,
+    "https": PROXY_URL,
+}
 
-try:
-    # 1. Simple connectivity test to Google (Not the API yet)
-    print("1. Testing connection to google.com...")
-    response = requests.get("https://www.google.com", proxies=proxies, verify=False, timeout=10)
-    print(f"   Status Code: {response.status_code}")
+def upload_and_get_uri():
+    # URL for file upload
+    url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
     
-    if response.status_code == 200:
-        print("   ✅ Internet connection working.")
-    else:
-        print("   ❌ Internet test failed.")
-        print(f"   Response Content: {response.text[:200]}") # Print first 200 chars
-
-    # 2. Testing the API Endpoint (HEAD request just to check access)
-    print("\n2. Testing API Endpoint reachability...")
-    api_url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
+    print(f"--- Attempting to upload '{FILE_PATH}' ---")
     
-    # We send a dummy POST without a file just to see if the server replies
-    response_api = requests.post(api_url, proxies=proxies, verify=False, timeout=10)
-    
-    print(f"   Status Code: {response_api.status_code}")
-    print(f"   Raw Response Text: '{response_api.text}'") # <--- THIS IS KEY
+    try:
+        # Open the file in binary mode
+        with open(FILE_PATH, 'rb') as f:
+            
+            # Prepare the file payload. 
+            # 'file' is the key Google expects. 'text/plain' is the type for .txt files.
+            files_payload = {
+                'file': (FILE_PATH, f, 'text/plain')
+            }
+            
+            # Note: Do NOT set 'Content-Type' header here. Requests does it automatically.
+            response = requests.post(
+                url, 
+                files=files_payload, 
+                proxies=proxies, 
+                verify=False,  # Bypass SSL errors
+                timeout=60
+            )
+            
+        # Check if upload was successful
+        if response.status_code == 200:
+            response_json = response.json()
+            file_uri = response_json['file']['uri']
+            print("✅ Upload Successful!")
+            print(f"📂 File URI: {file_uri}")
+            
+            # Save URI to a file so we don't lose it
+            with open("uploaded_uri.txt", "w") as uri_file:
+                uri_file.write(file_uri)
+                
+            return file_uri
+            
+        else:
+            print(f"❌ Upload Failed with status: {response.status_code}")
+            print(f"   Server Message: {response.text}")
+            return None
 
-except Exception as e:
-    print(f"\n❌ CRITICAL ERROR: {e}")
+    except FileNotFoundError:
+        print(f"❌ CRITICAL ERROR: Could not find '{FILE_PATH}'")
+        print("   Make sure the file is in the same folder as this script.")
+        return None
+    except Exception as e:
+        print(f"❌ System Error: {e}")
+        return None
+
+if __name__ == "__main__":
+    upload_and_get_uri()
