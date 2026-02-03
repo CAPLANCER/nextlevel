@@ -2,96 +2,48 @@ import requests
 import os
 import urllib3
 
-# ==========================================
-# CONFIG
-# ==========================================
-API_KEY = os.getenv("GEMINI_API_KEY")  # DO NOT hardcode
-FILE_PATH = "your_file.txt"
-PROXY_URL = "http://10.10.1.10:3128"
+# ---------------- CONFIG ----------------
+API_KEY = "YOUR_API_KEY"
+UPLOAD_URL = "https://your-api-endpoint/upload"
+FILE_PATH = "input.txt"
 
-# ==========================================
-# SETUP
-# ==========================================
+# Disable SSL warnings (optional)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-proxies = {
-    "http": PROXY_URL,
-    "https": PROXY_URL
-}
+# ---------------------------------------
 
-HEADERS = {
-    "User-Agent": "PostmanRuntime/7.32.0",
-    "Accept": "*/*",
-    "Connection": "keep-alive"
-}
+def upload_text_file(api_key, upload_url, file_path):
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(file_path)
 
-# ==========================================
-# UPLOAD FUNCTION
-# ==========================================
-def upload_like_postman():
-    url = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
+    headers = {
+        "Authorization": f"Bearer {api_key}"
+    }
 
-    print(f"--- Uploading: {FILE_PATH} ---")
+    with open(file_path, "rb") as f:
+        files = {
+            "file": (os.path.basename(file_path), f, "text/plain")
+        }
 
-    try:
-        with open(FILE_PATH, "rb") as f:
-            files = {
-                "file": (os.path.basename(FILE_PATH), f)
-            }
+        response = requests.post(
+            upload_url,
+            headers=headers,
+            files=files,
+            verify=False  # SSL bypass (remove if not needed)
+        )
 
-            response = requests.post(
-                url=url,
-                headers=HEADERS,
-                files=files,
-                proxies=proxies,
-                verify=False,
-                timeout=60
-            )
+    response.raise_for_status()
+    result = response.json()
 
-        # ==========================================
-        # RESPONSE HANDLING (IMPORTANT PART)
-        # ==========================================
-        print("Status Code:", response.status_code)
-        print("Content-Type:", response.headers.get("Content-Type"))
-        print("Raw Response:", repr(response.text))
+    # Try common URI keys safely
+    for key in ["uri", "fileUri", "file_uri", "url", "file_url"]:
+        if key in result:
+            return result[key]
 
-        # ❌ HTTP-level failure
-        if not response.ok:
-            print("❌ Upload failed")
-            return None
-
-        # ❌ Empty body
-        if not response.text or response.text.strip() == "":
-            print("❌ Empty response body (no JSON returned)")
-            return None
-
-        # ❌ Not JSON
-        if "application/json" not in response.headers.get("Content-Type", ""):
-            print("❌ Response is not JSON")
-            return None
-
-        # ✅ Safe JSON parsing
-        data = response.json()
-        uri = data["file"]["uri"]
-
-        print("✅ Upload successful")
-        print("📂 File URI:", uri)
-        return uri
-
-    except requests.exceptions.Timeout:
-        print("❌ Request timed out")
-    except requests.exceptions.ProxyError:
-        print("❌ Proxy connection error")
-    except requests.exceptions.RequestException as e:
-        print("❌ Request error:", e)
-    except Exception as e:
-        print("❌ Unexpected error:", e)
-
-    return None
+    raise KeyError("URI not found in API response")
 
 
-# ==========================================
-# RUN
-# ==========================================
 if __name__ == "__main__":
-    upload_like_postman()
+    uri = upload_text_file(API_KEY, UPLOAD_URL, FILE_PATH)
+    print("✅ Upload successful")
+    print("📄 File URI:", uri)
