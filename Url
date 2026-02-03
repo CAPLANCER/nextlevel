@@ -9,21 +9,23 @@ from urllib3.exceptions import InsecureRequestWarning
 API_KEY = "YOUR_API_KEY"
 FILE_PATH = "input.txt"
 
-UPLOAD_URL = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
+UPLOAD_URL = (
+    "https://generativelanguage.googleapis.com/upload/v1beta/files"
+    f"?key={API_KEY}"
+)
 
-# 🔁 Proxy configuration
 PROXIES = {
     "http": "http://proxy.company.com:8080",
     "https": "http://proxy.company.com:8080"
 }
 # ---------------------------------------
 
-# 🔇 Suppress SSL warnings (intentional)
+# ✅ Correct warning suppression (NO patching)
 urllib3.disable_warnings(InsecureRequestWarning)
 
 
 def upload_text_file(file_path):
-    if not os.path.exists(file_path):
+    if not os.path.isfile(file_path):
         raise FileNotFoundError(file_path)
 
     mime_type, _ = mimetypes.guess_type(file_path)
@@ -37,33 +39,26 @@ def upload_text_file(file_path):
 
     with open(file_path, "rb") as f:
         files = {
-            "metadata": (
-                None,
-                json.dumps(metadata),
-                "application/json"
-            ),
-            "file": (
-                os.path.basename(file_path),
-                f,
-                mime_type
-            )
+            "metadata": (None, json.dumps(metadata), "application/json"),
+            "file": (os.path.basename(file_path), f, mime_type)
         }
 
         response = requests.post(
             UPLOAD_URL,
             files=files,
-            proxies=PROXIES,     # 🌐 Proxy added here
-            verify=False,        # 🔴 SSL verification disabled
+            proxies=PROXIES,
+            verify=False,     # SSL bypass
             timeout=60
         )
 
     response.raise_for_status()
-    result = response.json()
-
-    return result["file"]["uri"]
+    return response.json()["file"]["uri"]
 
 
 if __name__ == "__main__":
-    uri = upload_text_file(FILE_PATH)
-    print("✅ File uploaded successfully")
-    print("📄 File URI:", uri)
+    try:
+        uri = upload_text_file(FILE_PATH)
+        print("Upload successful")
+        print("File URI:", uri)
+    except Exception as e:
+        print("Upload failed:", e)
