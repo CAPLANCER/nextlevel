@@ -1,49 +1,61 @@
 import requests
 import os
+import mimetypes
+import json
 import urllib3
+from urllib3.exceptions import InsecureRequestWarning
 
 # ---------------- CONFIG ----------------
 API_KEY = "YOUR_API_KEY"
-UPLOAD_URL = "https://your-api-endpoint/upload"
 FILE_PATH = "input.txt"
 
-# Disable SSL warnings (optional)
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
+UPLOAD_URL = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
 # ---------------------------------------
 
-def upload_text_file(api_key, upload_url, file_path):
+# 🔇 Suppress SSL warnings (explicit & intentional)
+urllib3.disable_warnings(InsecureRequestWarning)
+
+
+def upload_text_file(file_path):
     if not os.path.exists(file_path):
         raise FileNotFoundError(file_path)
 
-    headers = {
-        "Authorization": f"Bearer {api_key}"
+    mime_type, _ = mimetypes.guess_type(file_path)
+    mime_type = mime_type or "text/plain"
+
+    metadata = {
+        "file": {
+            "display_name": os.path.basename(file_path)
+        }
     }
 
     with open(file_path, "rb") as f:
         files = {
-            "file": (os.path.basename(file_path), f, "text/plain")
+            "metadata": (
+                None,
+                json.dumps(metadata),
+                "application/json"
+            ),
+            "file": (
+                os.path.basename(file_path),
+                f,
+                mime_type
+            )
         }
 
         response = requests.post(
-            upload_url,
-            headers=headers,
+            UPLOAD_URL,
             files=files,
-            verify=False  # SSL bypass (remove if not needed)
+            verify=False  # 🔴 SSL verification disabled
         )
 
     response.raise_for_status()
     result = response.json()
 
-    # Try common URI keys safely
-    for key in ["uri", "fileUri", "file_uri", "url", "file_url"]:
-        if key in result:
-            return result[key]
-
-    raise KeyError("URI not found in API response")
+    return result["file"]["uri"]
 
 
 if __name__ == "__main__":
-    uri = upload_text_file(API_KEY, UPLOAD_URL, FILE_PATH)
-    print("✅ Upload successful")
+    uri = upload_text_file(FILE_PATH)
+    print("✅ File uploaded successfully")
     print("📄 File URI:", uri)
