@@ -10,9 +10,15 @@ API_KEY = "YOUR_API_KEY"
 FILE_PATH = "input.txt"
 
 UPLOAD_URL = f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={API_KEY}"
+
+# 🔁 Proxy configuration
+PROXIES = {
+    "http": "http://proxy.company.com:8080",
+    "https": "http://proxy.company.com:8080"
+}
 # ---------------------------------------
 
-# 🔇 Suppress SSL warnings (explicit & intentional)
+# 🔇 Suppress SSL warnings (intentional)
 urllib3.disable_warnings(InsecureRequestWarning)
 
 
@@ -46,7 +52,9 @@ def upload_text_file(file_path):
         response = requests.post(
             UPLOAD_URL,
             files=files,
-            verify=False  # 🔴 SSL verification disabled
+            proxies=PROXIES,     # 🌐 Proxy added here
+            verify=False,        # 🔴 SSL verification disabled
+            timeout=60
         )
 
     response.raise_for_status()
