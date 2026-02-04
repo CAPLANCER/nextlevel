@@ -4,8 +4,8 @@ import re
 
 # --- Configuration ---
 API_KEY = "YOUR_API_KEY_HERE"
-FILE_URI = "https://your-api-endpoint/v1beta/files/example-uri-123" # <--- Paste your URI here
-FILE_MIME = "text/plain" # Or "image/png" etc.
+FILE_URI = "https://your-api-endpoint/v1beta/files/example-uri-123"
+FILE_MIME = "text/plain" 
 
 TIMEOUT_SECONDS = 120
 
@@ -15,20 +15,12 @@ PROXIES = {
 }
 
 def Generate_JSON_From_URI(uri, mime_type):
-    # Update to your specific model endpoint
     url = f"https://your-nlp-endpoint/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
-    
     headers = {"Content-Type": "application/json"}
     
-    # Precise prompt to ensure valid JSON output
     prompt_text = (
-        "Analyze the provided file. Identify the source language and translate the content into English. "
-        "Provide the result strictly in this JSON format:\n"
-        "{\n"
-        "  \"Language\": \"detected_language\",\n"
-        "  \"TranslatedContent\": \"the_markdown_translated_content\"\n"
-        "}\n"
-        "Do not include any other text or explanation."
+        "Identify the language and translate to English. "
+        "Return result STRICTLY as JSON: {\"Language\": \"...\", \"TranslatedContent\": \"...\"}"
     )
 
     payload = {
@@ -41,7 +33,7 @@ def Generate_JSON_From_URI(uri, mime_type):
     }
 
     try:
-        print(f"Connecting to LLM using URI: {uri}...")
+        print(f"Connecting via Proxy to LLM using URI: {uri}...")
         response = requests.post(
             url, 
             headers=headers, 
@@ -51,44 +43,47 @@ def Generate_JSON_From_URI(uri, mime_type):
             timeout=TIMEOUT_SECONDS
         )
 
+        # CHECK 1: HTTP Status
+        print(f"Server Status Code: {response.status_code}")
+
         if response.status_code == 200:
-            res_json = response.json()
-            # Extract text from the Gemini response structure
+            # CHECK 2: Is it actually JSON?
             try:
+                res_json = response.json()
                 raw_text = res_json['candidates'][0]['content']['parts'][0]['text']
                 return raw_text
-            except (KeyError, IndexError):
-                print("Error: Response structure was unexpected.")
-                print(json.dumps(res_json, indent=2))
+            except Exception as e:
+                print("--- ERROR: Response body was not the expected AI JSON ---")
+                print(f"Raw Response Text: {response.text}") # THIS WILL SHOW THE HTML IF BLOCKED
                 return None
         else:
-            print(f"Failed. Status: {response.status_code}")
-            print(f"Response: {response.text}")
+            print(f"--- FAILED: HTTP {response.status_code} ---")
+            print(f"Error Details: {response.text}")
             return None
 
     except Exception as e:
-        print(f"Request Error: {e}")
+        print(f"--- CONNECTION ERROR: {e} ---")
         return None
 
 def Clean_JSON_Output(raw_string):
-    """Removes markdown fences like ```json if the AI adds them."""
-    try:
-        # Find everything between the first '{' and the last '}'
-        match = re.search(r'\{.*\}', raw_string, re.DOTALL)
-        if match:
-            return json.loads(match.group(0))
-        return json.loads(raw_string)
-    except Exception as e:
-        print(f"Failed to parse JSON: {e}")
-        print(f"Raw String: {raw_string}")
+    """Safely extracts JSON even if AI adds extra words or markdown fences."""
+    if not raw_string:
         return None
+    try:
+        # Regex to find everything between the first '{' and last '}'
+        match = re.search(r'\{.*\}', raw_string, re.DOTALL)
+        json_str = match.group(0) if match else raw_string
+        return json.loads(json_str)
+    except Exception as e:
+        print(f"Failed to parse JSON string: {e}")
+        # Return a fallback dict so the program doesn't crash later
+        return {"Language": "Error", "TranslatedContent": raw_string}
 
-# --- Run ---
 if __name__ == "__main__":
     raw_content = Generate_JSON_From_URI(FILE_URI, FILE_MIME)
     
     if raw_content:
         json_data = Clean_JSON_Output(raw_content)
         if json_data:
-            print("\n--- GENERATED JSON ---")
+            print("\n--- FINAL JSON RESULT ---")
             print(json.dumps(json_data, indent=4))
