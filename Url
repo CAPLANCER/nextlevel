@@ -1,67 +1,42 @@
-import requests
-import mimetypes
-import os
-
-API_KEY = "YOUR_API_KEY_HERE"
-# Update this to your text file path
-FILE_PATH = r"C:\Users\Documents\sample_document.txt" 
-
-PROXIES = {
-    "http": "http://10.238.7.4:8080",
-    "https": "http://10.238.7.4:8080"
-}
-
 def Generate_URI_For_Text(file_path):
-    # This URL should be your specific file upload endpoint
+    # Ensure your API key is appended correctly
     upload_url = f"https://your-api-endpoint-for-upload?key={API_KEY}"
     
     try:
-        # 1. Detect MIME type (for .txt, this will be 'text/plain')
         mime_type, _ = mimetypes.guess_type(file_path)
         if mime_type is None:
-            mime_type = 'text/plain' # Fallback for text files
+            mime_type = 'text/plain'
 
-        print(f"Uploading file: {os.path.basename(file_path)} (Type: {mime_type})")
-
-        # 2. Open file in binary mode ('rb') to ensure compatibility with the multi-part upload
         with open(file_path, 'rb') as raw_file:
             files = {
                 'file': (os.path.basename(file_path), raw_file, mime_type)  
             }
             
-            # 3. Execute the POST request
-            # verify=False is kept as per your original code for internal networks
+            # Using your corporate proxy settings
             response = requests.post(
                 upload_url, 
                 files=files, 
-                proxies=PROXIES, 
+                proxies=Proxies, 
                 verify=False,
-                timeout=120
+                timeout=TIMEOUT_SECONDS
             )
 
+            # DEBUG: Print the raw status and text if it's not JSON
+            print(f"Status Code: {response.status_code}")
+            
             if response.status_code == 200:
-                res = response.json()  
-                uri = res.get("file", {}).get("uri")
-                
-                print("--- Upload Successful ---")
-                print(f"URI: {uri}")
-                print(f"Internal Name: {res.get('file', {}).get('name')}")
-                
-                return uri, mime_type
+                try:
+                    res = response.json()
+                    uri = res.get("file", {}).get("uri")
+                    return uri, mime_type
+                except ValueError:
+                    print("Error: Server returned 200 OK, but the body was not JSON.")
+                    print(f"Raw Response: {response.text}")
+                    return None, None
             else:
-                print(f"Failed to upload. Status: {response.status_code}")
-                print(f"Response: {response.text}")
+                print(f"Upload Failed. Server returned: {response.text}")
                 return None, None
 
-    except FileNotFoundError:
-        print(f"Error: The file at {file_path} was not found.")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"Connection Error: {e}")
         return None, None
-
-# --- Execution ---
-if __name__ == "__main__":
-    file_uri, file_mime = Generate_URI_For_Text(FILE_PATH)
-    
-    if file_uri:
-        print("\nYou can now pass this URI to your LLM function.")
