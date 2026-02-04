@@ -1,64 +1,67 @@
 import requests
-import os
 import mimetypes
-import json
-import urllib3
-from urllib3.exceptions import InsecureRequestWarning
+import os
 
-# ---------------- CONFIG ----------------
-API_KEY = "YOUR_API_KEY"
-FILE_PATH = "input.txt"
-
-UPLOAD_URL = (
-    "https://generativelanguage.googleapis.com/upload/v1beta/files"
-    f"?key={API_KEY}"
-)
+API_KEY = "YOUR_API_KEY_HERE"
+# Update this to your text file path
+FILE_PATH = r"C:\Users\Documents\sample_document.txt" 
 
 PROXIES = {
-    "http": "http://proxy.company.com:8080",
-    "https": "http://proxy.company.com:8080"
+    "http": "http://10.238.7.4:8080",
+    "https": "http://10.238.7.4:8080"
 }
-# ---------------------------------------
 
-# ✅ Correct warning suppression (NO patching)
-urllib3.disable_warnings(InsecureRequestWarning)
-
-
-def upload_text_file(file_path):
-    if not os.path.isfile(file_path):
-        raise FileNotFoundError(file_path)
-
-    mime_type, _ = mimetypes.guess_type(file_path)
-    mime_type = mime_type or "text/plain"
-
-    metadata = {
-        "file": {
-            "display_name": os.path.basename(file_path)
-        }
-    }
-
-    with open(file_path, "rb") as f:
-        files = {
-            "metadata": (None, json.dumps(metadata), "application/json"),
-            "file": (os.path.basename(file_path), f, mime_type)
-        }
-
-        response = requests.post(
-            UPLOAD_URL,
-            files=files,
-            proxies=PROXIES,
-            verify=False,     # SSL bypass
-            timeout=60
-        )
-
-    response.raise_for_status()
-    return response.json()["file"]["uri"]
-
-
-if __name__ == "__main__":
+def Generate_URI_For_Text(file_path):
+    # This URL should be your specific file upload endpoint
+    upload_url = f"https://your-api-endpoint-for-upload?key={API_KEY}"
+    
     try:
-        uri = upload_text_file(FILE_PATH)
-        print("Upload successful")
-        print("File URI:", uri)
+        # 1. Detect MIME type (for .txt, this will be 'text/plain')
+        mime_type, _ = mimetypes.guess_type(file_path)
+        if mime_type is None:
+            mime_type = 'text/plain' # Fallback for text files
+
+        print(f"Uploading file: {os.path.basename(file_path)} (Type: {mime_type})")
+
+        # 2. Open file in binary mode ('rb') to ensure compatibility with the multi-part upload
+        with open(file_path, 'rb') as raw_file:
+            files = {
+                'file': (os.path.basename(file_path), raw_file, mime_type)  
+            }
+            
+            # 3. Execute the POST request
+            # verify=False is kept as per your original code for internal networks
+            response = requests.post(
+                upload_url, 
+                files=files, 
+                proxies=PROXIES, 
+                verify=False,
+                timeout=120
+            )
+
+            if response.status_code == 200:
+                res = response.json()  
+                uri = res.get("file", {}).get("uri")
+                
+                print("--- Upload Successful ---")
+                print(f"URI: {uri}")
+                print(f"Internal Name: {res.get('file', {}).get('name')}")
+                
+                return uri, mime_type
+            else:
+                print(f"Failed to upload. Status: {response.status_code}")
+                print(f"Response: {response.text}")
+                return None, None
+
+    except FileNotFoundError:
+        print(f"Error: The file at {file_path} was not found.")
     except Exception as e:
-        print("Upload failed:", e)
+        print(f"An unexpected error occurred: {e}")
+        return None, None
+
+# --- Execution ---
+if __name__ == "__main__":
+    file_uri, file_mime = Generate_URI_For_Text(FILE_PATH)
+    
+    if file_uri:
+        print("\nYou can now pass this URI to your LLM function.")
