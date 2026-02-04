@@ -1,26 +1,62 @@
 import requests
+import mimetypes
+import os
 import json
 import re
 
 # --- Configuration ---
 API_KEY = "YOUR_API_KEY_HERE"
-FILE_URI = "https://your-api-endpoint/v1beta/files/example-uri-123"
-FILE_MIME = "text/plain" 
-
+FILE_PATH = r"C:\Users\Documents\sample_document.txt"  # Update this
+OUTPUT_JSON_NAME = "translated_output.json"
 TIMEOUT_SECONDS = 120
 
+# Proxy Setup
 PROXIES = {
     "http": "http://10.238.7.4:8080",
     "https": "http://10.238.7.4:8080"
 }
 
-def Generate_JSON_From_URI(uri, mime_type):
-    url = f"https://your-nlp-endpoint/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
-    headers = {"Content-Type": "application/json"}
+def Generate_URI_For_Text(file_path):
+    """Step 1: Upload file and handle potential proxy/format errors."""
+    upload_url = f"https://your-api-endpoint/v1beta/files?key={API_KEY}"
+    
+    try:
+        mime_type, _ = mimetypes.guess_type(file_path)
+        mime_type = mime_type or 'text/plain'
+
+        print(f"--- Uploading: {os.path.basename(file_path)} ---")
+
+        with open(file_path, 'rb') as raw_file:
+            files = {'file': (os.path.basename(file_path), raw_file, mime_type)}
+            response = requests.post(
+                upload_url, 
+                files=files, 
+                proxies=PROXIES, 
+                verify=False,
+                timeout=TIMEOUT_SECONDS
+            )
+
+            if response.status_code == 200:
+                res = response.json()
+                uri = res.get("file", {}).get("uri")
+                print(f"Success! URI: {uri}")
+                return uri, mime_type
+            else:
+                print(f"Upload Failed [{response.status_code}]: {response.text}")
+                return None, None
+    except Exception as e:
+        print(f"Upload Connection Error: {e}")
+        return None, None
+
+def Generate_JSON_Content(uri, mime_type):
+    """Step 2: Request translation from LLM using the URI."""
+    gen_url = f"https://your-nlp-endpoint/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
     
     prompt_text = (
-        "Identify the language and translate to English. "
-        "Return result STRICTLY as JSON: {\"Language\": \"...\", \"TranslatedContent\": \"...\"}"
+        "Identify the source language and translate the content into English. "
+        "Provide the result strictly in this JSON format: "
+        "{\"Language\": \"detected_language\", \"TranslatedContent\": \"markdown_content\"}. "
+        "Do not include any other text."
     )
 
     payload = {
@@ -33,57 +69,60 @@ def Generate_JSON_From_URI(uri, mime_type):
     }
 
     try:
-        print(f"Connecting via Proxy to LLM using URI: {uri}...")
+        print("--- Generating Translation ---")
         response = requests.post(
-            url, 
-            headers=headers, 
+            gen_url, 
             json=payload, 
             proxies=PROXIES, 
             verify=False, 
             timeout=TIMEOUT_SECONDS
         )
 
-        # CHECK 1: HTTP Status
-        print(f"Server Status Code: {response.status_code}")
-
         if response.status_code == 200:
-            # CHECK 2: Is it actually JSON?
-            try:
-                res_json = response.json()
-                raw_text = res_json['candidates'][0]['content']['parts'][0]['text']
-                return raw_text
-            except Exception as e:
-                print("--- ERROR: Response body was not the expected AI JSON ---")
-                print(f"Raw Response Text: {response.text}") # THIS WILL SHOW THE HTML IF BLOCKED
-                return None
+            res_json = response.json()
+            # Navigating the response structure safely
+            raw_text = res_json['candidates'][0]['content']['parts'][0]['text']
+            return raw_text
         else:
-            print(f"--- FAILED: HTTP {response.status_code} ---")
-            print(f"Error Details: {response.text}")
+            print(f"Generation Failed [{response.status_code}]: {response.text}")
             return None
-
     except Exception as e:
-        print(f"--- CONNECTION ERROR: {e} ---")
+        print(f"LLM Connection Error: {e}")
         return None
 
-def Clean_JSON_Output(raw_string):
-    """Safely extracts JSON even if AI adds extra words or markdown fences."""
-    if not raw_string:
-        return None
+def Clean_And_Save_JSON(raw_string, output_filename):
+    """Step 3: Extract JSON from AI string and save to a file."""
     try:
-        # Regex to find everything between the first '{' and last '}'
+        # Regex to find JSON object {}
         match = re.search(r'\{.*\}', raw_string, re.DOTALL)
-        json_str = match.group(0) if match else raw_string
-        return json.loads(json_str)
+        json_data = json.loads(match.group(0)) if match else json.loads(raw_string)
+        
+        # Save to file
+        with open(output_filename, 'w', encoding='utf-8') as f:
+            json.dump(json_data, f, indent=4, ensure_ascii=False)
+            
+        print(f"\n--- SUCCESS ---")
+        print(f"Result saved to: {os.path.abspath(output_filename)}")
+        return json_data
     except Exception as e:
-        print(f"Failed to parse JSON string: {e}")
-        # Return a fallback dict so the program doesn't crash later
-        return {"Language": "Error", "TranslatedContent": raw_string}
+        print(f"Error parsing or saving JSON: {e}")
+        return None
 
+# --- Main Execution Pipeline ---
 if __name__ == "__main__":
-    raw_content = Generate_JSON_From_URI(FILE_URI, FILE_MIME)
+    # 1. Start Upload
+    file_uri, m_type = Generate_URI_For_Text(FILE_PATH)
     
-    if raw_content:
-        json_data = Clean_JSON_Output(raw_content)
-        if json_data:
-            print("\n--- FINAL JSON RESULT ---")
-            print(json.dumps(json_data, indent=4))
+    if file_uri:
+        # 2. Start Generation
+        raw_ai_output = Generate_JSON_Content(file_uri, m_type)
+        
+        if raw_ai_output:
+            # 3. Clean and Save
+            final_json = Clean_And_Save_JSON(raw_ai_output, OUTPUT_JSON_NAME)
+            
+            if final_json:
+                print("\nPreview of JSON content:")
+                print(f"Language: {final_json.get('Language')}")
+                # Print only the first 100 characters of content as preview
+                print(f"Content: {final_json.get('TranslatedContent')[:100]}...")
