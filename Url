@@ -1,12 +1,12 @@
 import requests
-import mimetypes
-import os
 import json
+import re
 
 # --- Configuration ---
 API_KEY = "YOUR_API_KEY_HERE"
-# Update this to your text file path
-FILE_PATH = r"C:\Users\Documents\sample_document.txt" 
+FILE_URI = "https://your-api-endpoint/v1beta/files/example-uri-123" # <--- Paste your URI here
+FILE_MIME = "text/plain" # Or "image/png" etc.
+
 TIMEOUT_SECONDS = 120
 
 PROXIES = {
@@ -14,69 +14,81 @@ PROXIES = {
     "https": "http://10.238.7.4:8080"
 }
 
-def Generate_URI_For_Text(file_path):
-    # This URL should be your specific file upload endpoint
-    upload_url = f"https://your-api-endpoint-for-upload?key={API_KEY}"
+def Generate_JSON_From_URI(uri, mime_type):
+    # Update to your specific model endpoint
+    url = f"https://your-nlp-endpoint/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
     
+    headers = {"Content-Type": "application/json"}
+    
+    # Precise prompt to ensure valid JSON output
+    prompt_text = (
+        "Analyze the provided file. Identify the source language and translate the content into English. "
+        "Provide the result strictly in this JSON format:\n"
+        "{\n"
+        "  \"Language\": \"detected_language\",\n"
+        "  \"TranslatedContent\": \"the_markdown_translated_content\"\n"
+        "}\n"
+        "Do not include any other text or explanation."
+    )
+
+    payload = {
+        "contents": [{
+            "parts": [
+                {"fileData": {"mimeType": mime_type, "fileUri": uri}},
+                {"text": prompt_text}
+            ]
+        }]
+    }
+
     try:
-        # 1. Detect MIME type (for .txt, this will be 'text/plain')
-        mime_type, _ = mimetypes.guess_type(file_path)
-        if mime_type is None:
-            mime_type = 'text/plain' # Fallback for text files
+        print(f"Connecting to LLM using URI: {uri}...")
+        response = requests.post(
+            url, 
+            headers=headers, 
+            json=payload, 
+            proxies=PROXIES, 
+            verify=False, 
+            timeout=TIMEOUT_SECONDS
+        )
 
-        print(f"Uploading file: {os.path.basename(file_path)} (Type: {mime_type})")
+        if response.status_code == 200:
+            res_json = response.json()
+            # Extract text from the Gemini response structure
+            try:
+                raw_text = res_json['candidates'][0]['content']['parts'][0]['text']
+                return raw_text
+            except (KeyError, IndexError):
+                print("Error: Response structure was unexpected.")
+                print(json.dumps(res_json, indent=2))
+                return None
+        else:
+            print(f"Failed. Status: {response.status_code}")
+            print(f"Response: {response.text}")
+            return None
 
-        # 2. Open file in binary mode ('rb')
-        with open(file_path, 'rb') as raw_file:
-            files = {
-                'file': (os.path.basename(file_path), raw_file, mime_type)  
-            }
-            
-            # 3. Execute the POST request
-            # verify=False is kept for internal networks
-            response = requests.post(
-                upload_url, 
-                files=files, 
-                proxies=PROXIES, 
-                verify=False,
-                timeout=TIMEOUT_SECONDS
-            )
-
-            # DEBUG: See what the server actually sent back
-            print(f"Status Code: {response.status_code}")
-
-            if response.status_code == 200:
-                try:
-                    res = response.json()  
-                    uri = res.get("file", {}).get("uri")
-                    
-                    print("--- Upload Successful ---")
-                    print(f"URI: {uri}")
-                    print(f"Internal Name: {res.get('file', {}).get('name')}")
-                    
-                    return uri, mime_type
-                except json.JSONDecodeError:
-                    print("Error: Server returned 200 OK, but the body was not valid JSON.")
-                    print(f"Raw Response Body: {response.text}")
-                    return None, None
-            else:
-                print(f"Failed to upload. Status: {response.status_code}")
-                # This usually contains the HTML error page if a proxy blocks the request
-                print(f"Response: {response.text}")
-                return None, None
-
-    except FileNotFoundError:
-        print(f"Error: The file at {file_path} was not found.")
-        return None, None
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        return None, None
+        print(f"Request Error: {e}")
+        return None
 
-# --- Execution ---
+def Clean_JSON_Output(raw_string):
+    """Removes markdown fences like ```json if the AI adds them."""
+    try:
+        # Find everything between the first '{' and the last '}'
+        match = re.search(r'\{.*\}', raw_string, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        return json.loads(raw_string)
+    except Exception as e:
+        print(f"Failed to parse JSON: {e}")
+        print(f"Raw String: {raw_string}")
+        return None
+
+# --- Run ---
 if __name__ == "__main__":
-    file_uri, file_mime = Generate_URI_For_Text(FILE_PATH)
+    raw_content = Generate_JSON_From_URI(FILE_URI, FILE_MIME)
     
-    if file_uri:
-        print("\nSUCCESS: You can now pass this URI to your LLM function.")
-    else:
-        print("\nFAILURE: Check the debug logs above to see why the upload failed.")
+    if raw_content:
+        json_data = Clean_JSON_Output(raw_content)
+        if json_data:
+            print("\n--- GENERATED JSON ---")
+            print(json.dumps(json_data, indent=4))
