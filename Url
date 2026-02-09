@@ -1,128 +1,205 @@
-import requests
-import mimetypes
+import pdfplumber
 import os
-import json
 import re
+import pandas as pd
+from datetime import datetime
+import glob
+import sys
 
-# --- Configuration ---
-API_KEY = "YOUR_API_KEY_HERE"
-FILE_PATH = r"C:\Users\Documents\sample_document.txt"  # Update this
-OUTPUT_JSON_NAME = "translated_output.json"
-TIMEOUT_SECONDS = 120
+# ==========================================
+# Helper Functions for Formatting
+# ==========================================
 
-# Proxy Setup
-PROXIES = {
-    "http": "http://10.238.7.4:8080",
-    "https": "http://10.238.7.4:8080"
-}
-
-def Generate_URI_For_Text(file_path):
-    """Step 1: Upload file and handle potential proxy/format errors."""
-    upload_url = f"https://your-api-endpoint/v1beta/files?key={API_KEY}"
-    
+def parse_duration_to_seconds(duration_str):
+    """Parses duration string to total seconds for filtering."""
     try:
-        mime_type, _ = mimetypes.guess_type(file_path)
-        mime_type = mime_type or 'text/plain'
+        d_str = str(duration_str).strip()
+        if ':' in d_str:
+            parts = list(map(int, d_str.split(':')))
+            if len(parts) == 2: # MM:SS
+                return parts[0] * 60 + parts[1]
+            elif len(parts) == 3: # HH:MM:SS
+                return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        elif d_str.isdigit():
+            return int(d_str)
+    except:
+        return 0
+    return 0
 
-        print(f"--- Uploading: {os.path.basename(file_path)} ---")
+def format_date(d_str):
+    """Converts various date formats to dd-MM-yyyy"""
+    formats = ["%d-%b-%Y", "%d/%b/%Y", "%d/%m/%y"]
+    for fmt in formats:
+        try:
+            return datetime.strptime(d_str, fmt).strftime("%d-%m-%Y")
+        except ValueError:
+            continue
+    return d_str
 
-        with open(file_path, 'rb') as raw_file:
-            files = {'file': (os.path.basename(file_path), raw_file, mime_type)}
-            response = requests.post(
-                upload_url, 
-                files=files, 
-                proxies=PROXIES, 
-                verify=False,
-                timeout=TIMEOUT_SECONDS
-            )
+def format_time(t_str):
+    """Converts HH:MM:SS to hh:mm AM/PM"""
+    try:
+        return datetime.strptime(t_str, "%H:%M:%S").strftime("%I:%M %p")
+    except ValueError:
+        return t_str
 
-            if response.status_code == 200:
-                res = response.json()
-                uri = res.get("file", {}).get("uri")
-                print(f"Success! URI: {uri}")
-                return uri, mime_type
+def format_duration(d_str):
+    """Converts seconds or mm:ss to mm:ss"""
+    if str(d_str).isdigit():
+        seconds = int(d_str)
+        m, s = divmod(seconds, 60)
+        return f"{m:02d}:{s:02d}"
+    
+    if ':' in str(d_str):
+        try:
+            parts = str(d_str).split(':')
+            if len(parts) == 2:
+                return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+            elif len(parts) == 3:
+                total_sec = int(parts[0])*3600 + int(parts[1])*60 + int(parts[2])
+                m, s = divmod(total_sec, 60)
+                return f"{m:02d}:{s:02d}"
+        except:
+            pass
+    return str(d_str)
+
+# ==========================================
+# Main Extraction Logic
+# ==========================================
+
+def process_pdfs(input_folder, output_folder):
+    # Verify input folder exists
+    if not os.path.exists(input_folder):
+        print(f"Error: Input folder '{input_folder}' does not exist.")
+        return
+
+    # Create Output folder if not exists
+    if not os.path.exists(output_folder):
+        try:
+            os.makedirs(output_folder)
+            print(f"Created Output folder at: {output_folder}")
+        except Exception as e:
+            print(f"Error creating output folder: {e}")
+            return
+
+    # Find all PDF files
+    pdf_files = glob.glob(os.path.join(input_folder, "*.pdf"))
+    
+    if not pdf_files:
+        print(f"No PDF files found in '{input_folder}'.")
+        return
+
+    print(f"Found {len(pdf_files)} PDF(s). Processing...\n")
+
+    # Regex Patterns
+    jio_pattern = re.compile(r'(\d{2}-[A-Z]{3}-\d{4})\s+(\d{2}:\d{2}:\d{2})\s+(\d+)\s+(\d+)\s+')
+    airtel_pattern = re.compile(r'(\d{2}/[A-Z]{3}/\d{4})\s+(\d{2}:\d{2}:\d{2})\s+(\d{10,})\s+(\d{2}:\d{2})\s+')
+    vi_pattern = re.compile(r'(\d{2}/\d{2}/\d{2})-(\d{2}:\d{2}:\d{2})\s+(\d+)\s+(\d+:\d{2})\s+')
+
+    for pdf_file_path in pdf_files:
+        filename = os.path.basename(pdf_file_path)
+        print(f"--- Processing {filename} ---")
+        
+        provider = "Unknown"
+        user_name = "Unknown"
+        current_file_calls = []
+        
+        try:
+            with pdfplumber.open(pdf_file_path) as pdf:
+                # 1. Identify Provider and User Name
+                if len(pdf.pages) > 0:
+                    first_page_text = pdf.pages[0].extract_text() or ""
+                    
+                    if "Jio" in first_page_text: provider = "Jio"
+                    elif "Airtel" in first_page_text: provider = "Airtel"
+                    elif "Vi" in first_page_text or "Vodafone" in first_page_text: provider = "Vi"
+                    
+                    name_match = re.search(r'(?:Mr\.|Ms\.|Mrs\.)\s+([A-Za-z\s]+)', first_page_text)
+                    if not name_match:
+                         name_match = re.search(r'Name\s*[:]\s*([A-Za-z\s]+)', first_page_text)
+                    
+                    if name_match:
+                        user_name = name_match.group(1).strip()
+                        user_name = user_name.replace("Jio Number", "").replace("Your Plan", "").replace("Vi No", "").replace("\n", " ").strip()
+                
+                print(f"  > Provider: {provider}, User: {user_name}")
+
+                # 2. Extract Calls
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if not text: continue
+                    
+                    lines = text.split('\n')
+                    for line in lines:
+                        if any(x in line for x in ["KB", "MB", "GB", "Internet", "Data"]): 
+                            continue
+                            
+                        match = None
+                        if provider == "Jio": match = jio_pattern.search(line)
+                        elif provider == "Airtel": match = airtel_pattern.search(line)
+                        elif provider == "Vi": match = vi_pattern.search(line)
+                        
+                        if match:
+                            raw_date, raw_time, number, raw_duration = match.groups()
+                            
+                            seconds = parse_duration_to_seconds(raw_duration)
+                            
+                            if seconds > 0 and len(number) > 5:
+                                current_file_calls.append({
+                                    "Username": user_name,
+                                    "Date": format_date(raw_date),
+                                    "Time": format_time(raw_time),
+                                    "Number": number,
+                                    "Duration": format_duration(raw_duration)
+                                })
+
+            # 3. Save to Output Folder
+            if current_file_calls:
+                df = pd.DataFrame(current_file_calls)
+                df = df[["Username", "Date", "Time", "Number", "Duration"]]
+                
+                output_filename = os.path.splitext(filename)[0] + ".xlsx"
+                output_path = os.path.join(output_folder, output_filename)
+                
+                df.to_excel(output_path, index=False)
+                print(f"  > Saved to: {output_path}")
             else:
-                print(f"Upload Failed [{response.status_code}]: {response.text}")
-                return None, None
-    except Exception as e:
-        print(f"Upload Connection Error: {e}")
-        return None, None
+                print(f"  > No calls extracted.")
 
-def Generate_JSON_Content(uri, mime_type):
-    """Step 2: Request translation from LLM using the URI."""
-    gen_url = f"https://your-nlp-endpoint/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
-    
-    prompt_text = (
-        "Identify the source language and translate the content into English. "
-        "Provide the result strictly in this JSON format: "
-        "{\"Language\": \"detected_language\", \"TranslatedContent\": \"markdown_content\"}. "
-        "Do not include any other text."
-    )
+        except Exception as e:
+            print(f"  > Error: {e}")
+        print("")
 
-    payload = {
-        "contents": [{
-            "parts": [
-                {"fileData": {"mimeType": mime_type, "fileUri": uri}},
-                {"text": prompt_text}
-            ]
-        }]
-    }
-
-    try:
-        print("--- Generating Translation ---")
-        response = requests.post(
-            gen_url, 
-            json=payload, 
-            proxies=PROXIES, 
-            verify=False, 
-            timeout=TIMEOUT_SECONDS
-        )
-
-        if response.status_code == 200:
-            res_json = response.json()
-            # Navigating the response structure safely
-            raw_text = res_json['candidates'][0]['content']['parts'][0]['text']
-            return raw_text
-        else:
-            print(f"Generation Failed [{response.status_code}]: {response.text}")
-            return None
-    except Exception as e:
-        print(f"LLM Connection Error: {e}")
-        return None
-
-def Clean_And_Save_JSON(raw_string, output_filename):
-    """Step 3: Extract JSON from AI string and save to a file."""
-    try:
-        # Regex to find JSON object {}
-        match = re.search(r'\{.*\}', raw_string, re.DOTALL)
-        json_data = json.loads(match.group(0)) if match else json.loads(raw_string)
-        
-        # Save to file
-        with open(output_filename, 'w', encoding='utf-8') as f:
-            json.dump(json_data, f, indent=4, ensure_ascii=False)
-            
-        print(f"\n--- SUCCESS ---")
-        print(f"Result saved to: {os.path.abspath(output_filename)}")
-        return json_data
-    except Exception as e:
-        print(f"Error parsing or saving JSON: {e}")
-        return None
-
-# --- Main Execution Pipeline ---
 if __name__ == "__main__":
-    # 1. Start Upload
-    file_uri, m_type = Generate_URI_For_Text(FILE_PATH)
+    print("PDF Call Log Extractor")
+    print("======================")
     
-    if file_uri:
-        # 2. Start Generation
-        raw_ai_output = Generate_JSON_Content(file_uri, m_type)
+    # Get Input Folder
+    while True:
+        # Check if arguments were passed purely for testing/automation
+        if len(sys.argv) > 1:
+            input_folder = sys.argv[1]
+            if len(sys.argv) > 2:
+                output_folder = sys.argv[2]
+            else:
+                # Default output folder relative to input
+                output_folder = os.path.join(input_folder, "Output")
+            break
         
-        if raw_ai_output:
-            # 3. Clean and Save
-            final_json = Clean_And_Save_JSON(raw_ai_output, OUTPUT_JSON_NAME)
-            
-            if final_json:
-                print("\nPreview of JSON content:")
-                print(f"Language: {final_json.get('Language')}")
-                # Print only the first 100 characters of content as preview
-                print(f"Content: {final_json.get('TranslatedContent')[:100]}...")
+        # Interactive Mode
+        print("\nEnter the INPUT Folder path (containing PDFs):")
+        input_folder = input().strip().replace('"', '').replace("'", "")
+        
+        if os.path.exists(input_folder):
+            print("\nEnter the OUTPUT Folder path (where Excel files will be saved):")
+            # If user presses enter, default to Input/Output
+            output_folder = input().strip().replace('"', '').replace("'", "")
+            if not output_folder:
+                output_folder = os.path.join(input_folder, "Output")
+                print(f"No output folder provided. Using default: {output_folder}")
+            break
+        else:
+            print("Folder does not exist. Please try again.")
+
+    process_pdfs(input_folder, output_folder)
+    print("\nProcessing Complete.")
