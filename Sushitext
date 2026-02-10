@@ -1,538 +1,182 @@
-Below is the complete SDD in plain text format, cleanly structured so you can copy–paste directly into a Word document.
-No formatting elements that break—fully text-only, easy to edit.
-
-
----
-
-============================================================
-==================== SOLUTION DESIGN DOCUMENT (SDD) ====================
-
-Project Name: Mobile Bill Automation
-Version: 1.0
-Prepared By: RPA Developer – Shushank
-Purpose: This document defines the technical solution design, workflow details, data processing logic, and exception handling implemented in the Mobile Bill Automation process.
-
-
----
-
-1. INTRODUCTION
-
-1.1 Purpose
-The purpose of this Solution Design Document (SDD) is to describe the technical design for automating mobile bill processing. The automation extracts call records from PDF files, processes and filters call data, converts the data into structured JSON using Gemini, prepares an Excel output file, applies business rules, and sends the final processed file to business users.
-
-1.2 Scope
-This process includes:
-
-Reading PDF files from shared drive
-
-Extracting call records
-
-Filtering relevant data
-
-Calling Gemini API for JSON conversion
-
-Creating and formatting Excel output
-
-Applying business rules
-
-Sending final files as email output
-
-
-
----
-
-2. INPUT SOURCES
-
-2.1 PDF Input Files
-PDF files are received on the shared drive.
-File Name Format:
-<UserName>_<Operator>_<MonthYear>.pdf
-Example: ShushankYadav_Jio_Dec2025.pdf
-
-2.2 Supporting Input Files Provided by Business
-
-1. Mobile Number Master (sheet: Mobile)
-
-
-2. Landline Number Master (sheet: Landline)
-
-
-3. Holiday List (dates)
-
-
-4. Market Segment Mapping File (User → Segment → Market Timing)
-
-
-
-
----
-
-3. HIGH-LEVEL PROCESS OVERVIEW
-
-1. Retrieve PDF file from shared drive
-
-
-2. Convert PDF to text using Python
-
-
-3. Detect operator and extract call records section
-
-
-4. Send filtered call records to Gemini
-
-
-5. Receive JSON output
-
-
-6. Convert JSON to DataTable
-
-
-7. Apply business transformation rules
-
-
-8. Create output Excel using template
-
-
-9. Format Excel file
-
-
-10. Email output files to users
-
-
-
-
----
-
-4. DETAILED PROCESS DESIGN
-
-
----
-
-4.1 Initialization (REFramework)
-
-Load Config file
-
-Initialize dictionaries, counters
-
-Load Master Files (Mobile Master, Landline Master, Market Mapping, Holiday File)
-
-Prepare Gemini API authentication
-
-Store paths for Input, Output, Template
-
-Log "process start time"
-
-
-
----
-
-4.2 Reading Input Files
-
-1. Fetch all files from shared input folder.
-
-
-2. Validate file name pattern.
-
-
-3. Extract from file name:
-
-Username
-
-Operator
-
-Billing Month & Year
-
-
-
-4. Store these values for later use.
-
-
-
-
----
-
-5. PDF → TEXT CONVERSION (Python Script #1)
-
-PDF is opened in Python.
-
-Extract text from each page.
-
-Since the PDFs are digitally generated, conversion is accurate.
-
-Output: Raw text file.
-
-Delete temporary text after extraction.
-
-
-
----
-
-6. CALL RECORD EXTRACTION (Python Script #2)
-
-Problem: PDF text contains irrelevant data that increases Gemini token usage.
-
-Solution:
-
-Detect operator from file name (Jio, Airtel, Vi).
-
-Load corresponding keyword set.
-
-Extract only the text between defined boundary keywords.
-
-This reduces:
-
-Processing time
-
-Memory usage
-
-Token consumption
-
-
-
-Output: Filtered call records text only.
-
-
----
-
-7. GEMINI PROCESSING (Python Script #3)
-
-Input: Filtered call record text
-Output: JSON containing rows of:
-
-Date
-
-Time
-
-Number
-
-Duration
-
-
-Error Handling:
-
-If Gemini fails or returns malformed JSON, log as business exception.
-
-Skip to next file without stopping the process.
-
-
-
----
-
-8. JSON → DATATABLE CONVERSION
-
-Convert JSON response into a DataTable.
-
-Columns created:
-
-Date
-
-Time
-
-Number
-
-Duration
-
-
-
-
----
-
-9. BUSINESS TRANSFORMATION RULES
-
-Below rules are applied on each row in the DataTable.
-
-
----
-
-9.1 Username Extraction
-
-From filename:
-Example: ShushankYadav_Jio_Dec2025
-Split by _ → Username = first part.
-
-
----
-
-9.2 Date Normalization
-
-Different operators supply dates in different formats.
-
-Supported formats are checked.
-
-Convert date to final required format:
-DD/MM/YYYY
-
-
-
----
-
-9.3 Time Normalization
-
-Convert 24-hour formats to 12-hour format.
-
-Validate HH:mm:ss if available.
-
-Standard output format:
-hh:mm tt
-
-
-
----
-
-9.4 Number Normalization
-
-Steps:
-
-Remove +91, 0091 and leading zeros.
-
-Ensure mobile numbers become 10-digit format.
-
-Landline numbers retain structure based on area code and master sheet.
-
-
-
----
-
-9.5 Duration Normalization
-
-Duration may come in various formats:
-
-Only seconds (e.g., 90)
-
-mm:ss
-
-hh:mm:ss
-
-
-Output rules:
-
-If < 60 sec → 00:ss
-
-If < 60 min → mm:ss
-
-Else → hh:mm:ss
-
-
-Examples:
-
-49 sec → 00:49
-
-39 min 47 sec → 39:47
-
-1 hr 39 min 49 sec → 01:39:49
-
-
-
----
-
-9.6 Market Segment Assignment
-
-Using Market Segment Mapping File:
-Username → Segment
-
-For each segment, identify market time range.
-
-Market Start & End time retrieved for further checks.
-
-
-
----
-
-9.7 Market Timing Check
-
-Compare call time with market time.
-
-If call time falls between start & end → "Market"
-
-Else → "Outside Market"
-
-
-
----
-
-9.8 Number Classification: Mobile / Landline
-
-Rules:
-
-Numbers starting with 6–9 → Mobile
-
-Others → Landline
-
-
-Further validation:
-
-Check against Mobile Master and Landline Master.
-
-If match → "Internal = Yes"
-
-Else → "Internal = No"
-
-
-
----
-
-9.9 Holiday / Working Day Logic
-
-1. If call date exists in Holiday List → Mark as Holiday
-
-
-2. Else if Saturday or Sunday → Mark as Holiday
-
-
-3. Else → Mark as Working Day
-
-
-
-
----
-
-10. OUTPUT FILE CREATION
-
-Steps:
-
-1. Copy Excel Template to Output Folder.
-
-
-2. File Name Example:
-ShushankYadav_Jio_Dec2025.xlsx
-
-
-3. Write DataTable to the template Excel.
-
-
-4. Save and close Excel.
-
-
-
-
----
-
-11. EXCEL FORMATTING
-
-Autofit columns
-
-Apply borders
-
-Apply alignment
-
-Format duration, date, and number columns
-
-Apply conditional formatting if necessary
-
-Execute VBA macro if required
-
-Kill Excel process to release lock
-
-
-
----
-
-12. EMAIL OUTPUT
-
-Subject:
-Mobile Bill Automation – Processed Output
-
-Body:
-"Please find attached the processed file(s) for Mobile Bill Automation."
-
-Attachments:
-
-All processed Excel files
-
-Exception file (if applicable)
-
-
-
----
-
-13. EXCEPTION HANDLING
-
-Summary of exceptions and handling method:
-
-Business Exceptions:
-
-Invalid date/time format → Add to business exception log
-
-Missing call records → Log and continue
-
-Number not recognized → Mark as "Unknown"
-
-
-System Exceptions:
-
-Python failure → Retry 3 times
-
-Gemini failure → Retry, else log and continue
-
-File access error → Delay and retry
-
-Excel lock → Kill Excel and continue
-
-
-
----
-
-14. PERFORMANCE OPTIMIZATION
-
-Filtering call records before Gemini reduces processing time.
-
-DataTable manipulation uses LINQ for speed.
-
-Workbook activities used instead of Excel for faster writes.
-
-Reused Python engine for consecutive operations.
-
-
-
----
-
-15. DEPENDENCIES
-
-Software:
-
-UiPath Studio (2023.10.1)
-
-Python 3.x
-
-Gemini API
-
-MS Excel
-
-
-Files:
-
-Mobile Master
-
-Landline Master
-
-Holiday List
-
-Market Segment Mapping
-
-Excel Template
-
-
-
----
-
-16. CONCLUSION
-
-The Mobile Bill Automation process fully automates PDF processing, JSON generation, business rule application, and Excel report preparation. The solution ensures accuracy, consistency, and significant reduction in manual effort.
-
-
----
-
-If you want, I can also generate:
-
-Process Flow Diagram (ASCII or image)
-
-Exception Matrix
-
-Config.xlsx Template
-
-Folder Structure Diagram
-
-Test Scenarios (TDD)
-
-
-Just tell me what you need.
+import pdfplumber
+import os
+import re
+import pandas as pd
+from datetime import datetime
+import glob
+import sys
+
+# ==========================================
+# Helper Functions for Formatting
+# ==========================================
+
+def parse_duration_to_seconds(duration_str):
+    try:
+        d_str = str(duration_str).strip()
+        if ':' in d_str:
+            parts = list(map(int, d_str.split(':')))
+            if len(parts) == 2: # MM:SS
+                return parts[0] * 60 + parts[1]
+            elif len(parts) == 3: # HH:MM:SS
+                return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        elif d_str.isdigit():
+            return int(d_str)
+    except:
+        return 0
+    return 0
+
+def format_date(d_str):
+    formats = ["%d-%b-%Y", "%d/%b/%Y", "%d/%m/%y"]
+    for fmt in formats:
+        try:
+            return datetime.strptime(d_str, fmt).strftime("%d-%m-%Y")
+        except ValueError:
+            continue
+    return d_str
+
+def format_time(t_str):
+    try:
+        return datetime.strptime(t_str, "%H:%M:%S").strftime("%I:%M %p")
+    except ValueError:
+        return t_str
+
+def format_duration(d_str):
+    if str(d_str).isdigit():
+        seconds = int(d_str)
+        m, s = divmod(seconds, 60)
+        return f"{m:02d}:{s:02d}"
+    
+    if ':' in str(d_str):
+        try:
+            parts = str(d_str).split(':')
+            if len(parts) == 2:
+                return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+            elif len(parts) == 3:
+                total_sec = int(parts[0])*3600 + int(parts[1])*60 + int(parts[2])
+                m, s = divmod(total_sec, 60)
+                return f"{m:02d}:{s:02d}"
+        except:
+            pass
+    return str(d_str)
+
+# ==========================================
+# Main Extraction Logic
+# ==========================================
+
+def process_pdfs(input_folder, output_folder):
+    if not os.path.exists(input_folder):
+        print(f"Error: Input folder '{input_folder}' does not exist.")
+        return
+
+    if not os.path.exists(output_folder):
+        try:
+            os.makedirs(output_folder)
+            print(f"Created Output folder at: {output_folder}")
+        except Exception as e:
+            print(f"Error creating output folder: {e}")
+            return
+
+    pdf_files = glob.glob(os.path.join(input_folder, "*.pdf"))
+    
+    if not pdf_files:
+        print(f"No PDF files found in '{input_folder}'.")
+        return
+
+    print(f"Found {len(pdf_files)} PDF(s). Processing...\n")
+
+    # Regex Updates:
+    jio_pattern = re.compile(r'(\d{2}-[A-Z]{3}-\d{4})\s+(\d{2}:\d{2}:\d{2})\s+(\d+)\s+(\d+)\s+')
+    airtel_pattern = re.compile(r'(\d{2}/[A-Z]{3}/\d{4})\s+(\d{2}:\d{2}:\d{2})\s+(\d{10,})\s+(\d+(?::\d+)?)\s+')
+    # Updated Vi pattern to handle optional text between Time and Number (e.g. Roaming Partner)
+    vi_pattern = re.compile(r'(\d{2}/\d{2}/\d{2})-(\d{2}:\d{2}:\d{2})(?:.*?)?\s+(\d+)\s+(\d+:\d{2})\s+')
+
+    for pdf_file_path in pdf_files:
+        filename = os.path.basename(pdf_file_path)
+        print(f"--- Processing {filename} ---")
+        
+        provider = "Unknown"
+        user_name = "Unknown"
+        current_file_calls = []
+        
+        try:
+            with pdfplumber.open(pdf_file_path) as pdf:
+                # 1. Identify Provider
+                if len(pdf.pages) > 0:
+                    first_page_text = pdf.pages[0].extract_text() or ""
+                    
+                    if "Jio" in first_page_text: provider = "Jio"
+                    elif "Airtel" in first_page_text: provider = "Airtel"
+                    elif "Vi" in first_page_text or "Vodafone" in first_page_text: provider = "Vi"
+                    
+                    name_match = re.search(r'(?:Mr\.|Ms\.|Mrs\.)\s+([A-Za-z\s]+)', first_page_text)
+                    if not name_match:
+                         name_match = re.search(r'Name\s*[:]\s*([A-Za-z\s]+)', first_page_text)
+                    
+                    if name_match:
+                        user_name = name_match.group(1).strip()
+                        user_name = user_name.replace("Jio Number", "").replace("Your Plan", "").replace("Vi No", "").replace("\n", " ").strip()
+                
+                print(f"  > Provider: {provider}, User: {user_name}")
+
+                # 2. Extract Calls
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if not text: continue
+                    
+                    lines = text.split('\n')
+                    for line in lines:
+                        if any(x in line for x in ["KB", "MB", "GB", "Internet", "Data"]): 
+                            continue
+                        
+                        # Universal findall logic for all providers
+                        matches = []
+                        if provider == "Vi":
+                            matches = vi_pattern.findall(line)
+                        elif provider == "Jio":
+                            matches = jio_pattern.findall(line)
+                        elif provider == "Airtel":
+                            matches = airtel_pattern.findall(line)
+                        
+                        for match in matches:
+                            if len(match) == 4:
+                                raw_date, raw_time, number, raw_duration = match
+                            else:
+                                continue
+
+                            seconds = parse_duration_to_seconds(raw_duration)
+                            if seconds > 0 and len(number) > 5:
+                                current_file_calls.append({
+                                    "Username": user_name,
+                                    "Date": format_date(raw_date),
+                                    "Time": format_time(raw_time),
+                                    "Number": number,
+                                    "Duration": format_duration(raw_duration)
+                                })
+
+
+            # 3. Save to Output Folder
+            if current_file_calls:
+                df = pd.DataFrame(current_file_calls)
+                df = df[["Username", "Date", "Time", "Number", "Duration"]]
+                
+                output_filename = os.path.splitext(filename)[0] + ".xlsx"
+                output_path = os.path.join(output_folder, output_filename)
+                
+                df.to_excel(output_path, index=False)
+                print(f"  > Saved {len(df)} records to: {output_filename}")
+            else:
+                print(f"  > No calls extracted.")
+
+        except Exception as e:
+            print(f"  > Error: {e}")
+        print("")
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        process_pdfs(sys.argv[1], sys.argv[2] if len(sys.argv)>2 else os.path.join(sys.argv[1], "Output"))
+    else:
+        print("PDF Call Log Extractor v4")
+        print("-------------------------")
+        input_folder = input("Input Folder: ").strip().replace('"', '').replace("'", "")
+        output_folder = input("Output Folder: ").strip().replace('"', '').replace("'", "") or os.path.join(input_folder, "Output")
+        process_pdfs(input_folder, output_folder)
