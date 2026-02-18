@@ -130,8 +130,9 @@ def process_single_pdf(pdf_path, output_excel_path):
                         elif any(k in line_lower for k in ["data", "internet"]):
                             current_type = "Data"
 
-                    # Skip Data and SMS sections - REMOVED for robust 2-column handling
-                    # We process all lines and filter SMS by duration format later.
+                    # Skip Data for all, SMS sections specifically for Jio
+                    if provider == "Jio" and current_type in ["SMS"]:
+                         continue
 
                     # Universal findall logic for all providers
                     matches = []
@@ -151,6 +152,7 @@ def process_single_pdf(pdf_path, output_excel_path):
                         # Filter logic for Airtel:
                         # Voice calls have duration like "00:42" (contains :)
                         # SMS logs have duration like "1" (no :)
+                        # Note: Jio uses Section Header skipping instead (see above loop)
                         if provider == "Airtel":
                             if ':' not in raw_duration and raw_duration.strip() == '1':
                                 continue # Skip SMS
@@ -185,8 +187,12 @@ def process_single_pdf(pdf_path, output_excel_path):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python single_pdf_extractor.py <input_pdf_path> <output_excel_path>")
+        # Default/Hardcoded paths for testing if arguments not provided
+        input_pdf_path = r"D:\Projects\DummyPDF\InputPDF\Priyanka_Jio_Janurary24.pdf"
+        output_excel_path = r"D:\Projects\DummyPDF\Final_Output_Jio.xlsx"
+        # print("Usage: python single_pdf_extractor.py <input_pdf_path> <output_excel_path>")
     else:
         input_pdf_path = sys.argv[1]
         output_excel_path = sys.argv[2]
-        process_single_pdf(input_pdf_path, output_excel_path)
+        
+    process_single_pdf(input_pdf_path, output_excel_path)
