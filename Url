@@ -100,7 +100,8 @@ def process_single_pdf(pdf_path, output_excel_path):
                 elif "Airtel" in first_page_text: provider = "Airtel"
                 elif "Vi" in first_page_text or "Vodafone" in first_page_text: provider = "Vi"
                 
-                name_match = re.search(r'(?:Mr\.|Ms\.|Mrs\.)\s+([A-Za-z\s]+)', first_page_text)
+                # Updated Regex: Optional period (Mr. Name OR Mr Name)
+                name_match = re.search(r'(?:Mr\.?|Ms\.?|Mrs\.?)\s+([A-Za-z\s]+)', first_page_text)
                 if not name_match:
                         name_match = re.search(r'Name\s*[:]\s*([A-Za-z\s]+)', first_page_text)
                 
@@ -111,12 +112,27 @@ def process_single_pdf(pdf_path, output_excel_path):
             print(f"  > Provider: {provider}, User: {user_name}")
 
             # 2. Extract Calls
+            current_type = "Voice" # Default to Voice if no header found
+            
             for page in pdf.pages:
                 text = page.extract_text()
                 if not text: continue
                 
                 lines = text.split('\n')
                 for line in lines:
+                    # Detect Section Headers
+                    line_lower = line.lower()
+                    if "total" not in line_lower:
+                        if any(k in line_lower for k in ["voice", "roaming", "outgoing", "incoming", "call"]):
+                            current_type = "Voice"
+                        elif any(k in line_lower for k in ["sms", "message"]):
+                            current_type = "SMS"
+                        elif any(k in line_lower for k in ["data", "internet"]):
+                            current_type = "Data"
+
+                    # Skip Data and SMS sections - REMOVED for robust 2-column handling
+                    # We process all lines and filter SMS by duration format later.
+
                     # Universal findall logic for all providers
                     matches = []
                     if provider == "Vi":
@@ -132,7 +148,18 @@ def process_single_pdf(pdf_path, output_excel_path):
                         else:
                             continue
 
+                        # Filter logic for Airtel:
+                        # Voice calls have duration like "00:42" (contains :)
+                        # SMS logs have duration like "1" (no :)
+                        if provider == "Airtel":
+                            if ':' not in raw_duration and raw_duration.strip() == '1':
+                                continue # Skip SMS
+
                         seconds = parse_duration_to_seconds(raw_duration)
+                        
+                        # Filter logic:
+                        # Calls: Must be > 0 seconds
+                        
                         if seconds > 0 and len(number) > 5:
                             current_file_calls.append({
                                 "Username": user_name,
@@ -157,12 +184,9 @@ def process_single_pdf(pdf_path, output_excel_path):
     print("")
 
 if __name__ == "__main__":
-    # --- MANUALLY SET YOUR PATHS HERE ---
-    # Note: Make sure to include the actual filename (e.g., bill.pdf) 
-    # and the desired output filename (e.g., results.xlsx)
-    
-    input_pdf_path = r"D:\Projects\DummyPDF\InputPDF\your_bill_name.pdf"
-    output_excel_path = r"D:\Projects\DummyPDF\FinalOutput\extracted_calls.xlsx"
-
-    # Run the process
-    process_single_pdf(input_pdf_path, output_excel_path)
+    if len(sys.argv) < 3:
+        print("Usage: python single_pdf_extractor.py <input_pdf_path> <output_excel_path>")
+    else:
+        input_pdf_path = sys.argv[1]
+        output_excel_path = sys.argv[2]
+        process_single_pdf(input_pdf_path, output_excel_path)
